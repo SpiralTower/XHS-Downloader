@@ -1,0 +1,286 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+type App struct {
+	config        Config
+	logger        *log.Logger
+	records       *recordStore
+	handler       http.Handler
+	startedAt     time.Time
+	clientFactory clientFactory
+	clients       *httpClientPool
+	downloads     *downloadCoordinator
+}
+
+func New(config Config, logger *log.Logger) (*App, error) {
+	config = config.withDefaults()
+	if logger == nil {
+		logger = log.Default()
+	}
+	for _, directory := range []string{
+		config.VolumeDir,
+		filepath.Join(config.VolumeDir, "Download"),
+		filepath.Join(config.VolumeDir, "Temp"),
+	} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			return nil, fmt.Errorf("create %s: %w", directory, err)
+		}
+		if err := verifyWritableDirectory(directory); err != nil {
+			return nil, err
+		}
+	}
+	records, err := openRecordStore(config.VolumeDir)
+	if err != nil {
+		return nil, fmt.Errorf("open download records: %w", err)
+	}
+	clients := newHTTPClientPool(config.RequestTimeout, config.AllowPrivateProxy)
+	app := &App{
+		config:    config,
+		logger:    logger,
+		records:   records,
+		startedAt: time.Now(),
+		clients:   clients,
+		downloads: newDownloadCoordinator(defaultDownloadConcurrency, downloadLimits{
+			totalTimeout: config.DownloadTimeout,
+			idleTimeout:  config.DownloadIdleTimeout,
+		}),
+	}
+	app.clientFactory = clients.Client
+	app.handler = app.routes()
+	return app, nil
+}
+
+func (a *App) Close() error {
+	if a.clients == nil {
+		return nil
+	}
+	return a.clients.Close()
+}
+
+func (a *App) HTTPServer() *http.Server {
+	return &http.Server{
+		Addr:              a.config.Address(),
+		Handler:           a.handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       a.config.RequestTimeout + 5*time.Second,
+		WriteTimeout:      0,
+		IdleTimeout:       60 * time.Second,
+	}
+}
+
+func (a *App) Handler() http.Handler { return a.handler }
+
+func (a *App) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", a.handleHealth)
+	mux.HandleFunc("/xhs/detail", a.handleDetail)
+	mux.HandleFunc("/openapi.json", a.handleOpenAPI)
+	mux.HandleFunc("/docs", a.handleDocs)
+	mux.HandleFunc("/redoc", func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, "/docs", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/", a.handleWeb)
+	return a.logRequests(mux)
+}
+
+func (a *App) logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		started := time.Now()
+		next.ServeHTTP(writer, request)
+		a.logger.Printf("%s %s %s", request.Method, request.URL.Path, time.Since(started).Round(time.Millisecond))
+	})
+}
+
+func (a *App) handleHealth(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"status":         "ok",
+		"service":        "xhs-downloader-api",
+		"uptime_seconds": int64(time.Since(a.startedAt).Seconds()),
+	})
+}
+
+func (a *App) handleDetail(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(writer, http.MethodPost)
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, a.config.MaxBodyBytes)
+	params, err := decodeExtractRequest(request.Body)
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			status = http.StatusRequestEntityTooLarge
+		}
+		writeJSON(writer, status, map[string]any{
+			"message": "请求参数无效",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	client, err := a.clientFactory(params.Proxy)
+	if err != nil {
+		writeJSON(writer, http.StatusUnprocessableEntity, map[string]any{
+			"message": "代理参数无效",
+			"detail":  err.Error(),
+		})
+		return
+	}
+	if params.Proxy != nil {
+		defer client.CloseIdleConnections()
+	}
+	headers := requestHeaders(params.Cookie)
+
+	resolveContext, cancelResolve := context.WithTimeout(request.Context(), a.config.RequestTimeout)
+	resolved, err := resolveLink(resolveContext, params.URL, client, headers)
+	cancelResolve()
+	if err != nil {
+		a.writeExtract(writer, "提取小红书作品链接失败", params, nil)
+		return
+	}
+	if params.Skip && a.records.Has(resolved.NoteID) {
+		a.writeExtract(writer, "获取小红书作品数据成功", params, map[string]any{
+			"message": fmt.Sprintf("作品 %s 存在下载记录，跳过处理", resolved.NoteID),
+		})
+		return
+	}
+
+	fetchContext, cancelFetch := context.WithTimeout(request.Context(), a.config.RequestTimeout)
+	html, err := fetchPage(fetchContext, client, resolved.URL, headers, a.config.MaxUpstreamBody)
+	cancelFetch()
+	if err != nil {
+		a.logger.Printf("fetch %s: %v", resolved.NoteID, err)
+		a.writeExtract(writer, "获取小红书作品数据失败", params, nil)
+		return
+	}
+	note, err := parseInitialState(html, resolved.NoteID)
+	if err != nil {
+		a.logger.Printf("parse %s: %v", resolved.NoteID, err)
+		a.writeExtract(writer, "获取小红书作品数据失败", params, nil)
+		return
+	}
+	data, err := extractWork(note, resolved.URL, resolved.NoteID)
+	if err != nil {
+		a.logger.Printf("extract %s: %v", resolved.NoteID, err)
+		a.writeExtract(writer, "获取小红书作品数据失败", params, nil)
+		return
+	}
+	if params.Download {
+		unlock, lockErr := a.downloads.lockWork(request.Context(), resolved.NoteID)
+		if lockErr != nil {
+			data["下载错误"] = lockErr.Error()
+		} else {
+			defer unlock()
+			if params.Skip && a.records.Has(resolved.NoteID) {
+				a.writeExtract(writer, "获取小红书作品数据成功", params, map[string]any{
+					"message": fmt.Sprintf("作品 %s 存在下载记录，跳过处理", resolved.NoteID),
+				})
+				return
+			}
+			if err := downloadWork(request.Context(), client, a.config.VolumeDir, data, params.Index, a.downloads); err != nil {
+				a.logger.Printf("download %s: %v", resolved.NoteID, err)
+				data["下载错误"] = err.Error()
+			} else if err := a.records.Add(resolved.NoteID); err != nil {
+				a.logger.Printf("record %s: %v", resolved.NoteID, err)
+			}
+		}
+	}
+	a.writeExtract(writer, "获取小红书作品数据成功", params, data)
+}
+
+func (a *App) writeExtract(writer http.ResponseWriter, message string, params ExtractParams, data map[string]any) {
+	writeJSON(writer, http.StatusOK, ExtractResponse{Message: message, Params: params, Data: data})
+}
+
+func (a *App) handleOpenAPI(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	writeJSON(writer, http.StatusOK, openAPIDocument())
+}
+
+func (a *App) handleDocs(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	if request.Method != http.MethodHead {
+		_, _ = writer.Write([]byte(docsHTML))
+	}
+}
+
+func (a *App) handleWeb(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	index := filepath.Join(a.config.WebDistDir, "index.html")
+	if _, err := os.Stat(index); err != nil {
+		if request.URL.Path != "/" {
+			http.NotFound(writer, request)
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{
+			"service": "XHS-Downloader Go API",
+			"docs":    "/docs",
+			"health":  "/healthz",
+		})
+		return
+	}
+
+	relative := strings.TrimPrefix(filepath.Clean(request.URL.Path), string(filepath.Separator))
+	candidate := filepath.Join(a.config.WebDistDir, relative)
+	if relative != "." {
+		if path, err := filepath.Rel(a.config.WebDistDir, candidate); err == nil && path != ".." && !strings.HasPrefix(path, ".."+string(filepath.Separator)) {
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				if strings.HasPrefix(request.URL.Path, "/assets/") {
+					writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				http.ServeFile(writer, request, candidate)
+				return
+			}
+		}
+	}
+	writer.Header().Set("Cache-Control", "no-cache")
+	http.ServeFile(writer, request, index)
+}
+
+func writeJSON(writer http.ResponseWriter, status int, value any) {
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(status)
+	_ = json.NewEncoder(writer).Encode(value)
+}
+
+func methodNotAllowed(writer http.ResponseWriter, allowed string) {
+	writer.Header().Set("Allow", allowed)
+	writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"message": "Method Not Allowed"})
+}
+
+func shutdownServer(ctx context.Context, server *http.Server) error {
+	err := server.Shutdown(ctx)
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
