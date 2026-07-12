@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xhs-downloader:local
+    init: true
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5556"
+      WEB_DIST_DIR: /app/web/dist
+      XHS_VOLUME_DIR: /app/Volume
+      XHS_REQUEST_TIMEOUT: "${XHS_REQUEST_TIMEOUT:-15s}"
+      XHS_DOWNLOAD_TIMEOUT: "${XHS_DOWNLOAD_TIMEOUT:-30m}"
+      XHS_DOWNLOAD_IDLE_TIMEOUT: "${XHS_DOWNLOAD_IDLE_TIMEOUT:-60s}"
+      XHS_ALLOW_PRIVATE_PROXY: "${XHS_ALLOW_PRIVATE_PROXY:-false}"
+    ports:
+      - "${XHS_PORT:-5556}:5556"
+    volumes:
+      - xhs-volume:/app/Volume
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -T
+        - "3"
+        - -O
+        - /dev/null
+        - http://127.0.0.1:5556/healthz
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  xhs-volume:
+    name: xhs-volume

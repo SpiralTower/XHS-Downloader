@@ -9,3 +9,13 @@ __pycache__/
 /build/
 /dist/
 /output/
+/bin/
+/web/node_modules/
+/web/dist/
+/web/coverage/
+*.test
+.env
+.env.*
+!.env.example
+*.log
+*.tmp

@@ -1,47 +1,65 @@
-# ---- 阶段 1: 构建器 (Builder) ----
-# 使用一个功能完整的镜像，它包含编译工具或可以轻松安装它们
-FROM python:3.12-bullseye as builder
+# syntax=docker/dockerfile:1
 
-# 安装编译 uvloop 和 httptools 所需的系统依赖 (C编译器等)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:22-alpine AS web-build
 
-# 设置工作目录
+WORKDIR /src/web
+
+COPY web/package.json web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+COPY web/ ./
+RUN npm run build
+
+
+FROM golang:1.24-alpine AS api-build
+
+WORKDIR /src
+
+COPY go.* ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/xhs-api ./cmd/api
+
+
+FROM alpine:3.22 AS runtime
+
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S -g 10001 app \
+    && adduser -S -D -H -h /app -u 10001 -G app app \
+    && mkdir -p /app/web/dist /app/Volume \
+    && chown -R app:app /app
+
 WORKDIR /app
 
-# 复制需求文件
-COPY requirements.txt .
+LABEL name="XHS-Downloader" \
+      authors="JoeanAmier" \
+      repository="https://github.com/JoeanAmier/XHS-Downloader"
 
-# 在这个具备编译环境的阶段安装所有 Python 依赖
-# 安装到一个独立的目录 /install 中，以便后续复制
-RUN pip install --no-cache-dir --prefix="/install" -r requirements.txt
+COPY --chown=app:app --from=api-build /out/xhs-api /app/xhs-api
+COPY --chown=app:app --from=web-build /src/web/dist /app/web/dist
+COPY --chown=app:app LICENSE /app/LICENSE
 
-# ---- 阶段 2: 最终镜像 (Final Image) ----
-# 使用轻量级 slim 镜像作为最终的运行环境
-FROM python:3.12-slim
+ENV HOST=0.0.0.0 \
+    PORT=5556 \
+    WEB_DIST_DIR=/app/web/dist \
+    XHS_VOLUME_DIR=/app/Volume \
+    XHS_REQUEST_TIMEOUT=15s \
+    XHS_DOWNLOAD_TIMEOUT=30m \
+    XHS_DOWNLOAD_IDLE_TIMEOUT=60s \
+    XHS_ALLOW_PRIVATE_PROXY=false \
+    HOME=/app
 
-# 设置工作目录
-WORKDIR /app
-
-# 添加元数据标签
-LABEL name="XHS-Downloader" authors="JoeanAmier" repository="https://github.com/JoeanAmier/XHS-Downloader"
-
-# 从构建器阶段，将已经安装好的依赖包复制到最终镜像的系统路径中
-COPY --from=builder /install /usr/local
-
-# 复制项目代码和相关文件
-COPY locale /app/locale
-COPY source /app/source
-COPY static/XHS-Downloader.tcss /app/static/XHS-Downloader.tcss
-COPY LICENSE /app/LICENSE
-COPY main.py /app/main.py
-
-# 暴露端口
+VOLUME ["/app/Volume"]
 EXPOSE 5556
 
-# 创建挂载点
-VOLUME /app/Volume
+USER app:app
 
-# 设置容器启动命令
-CMD ["python", "main.py"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q -T 3 -O /dev/null http://127.0.0.1:5556/healthz || exit 1
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/app/xhs-api"]
