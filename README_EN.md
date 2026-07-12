@@ -20,6 +20,15 @@
 <p>🔥 <b>RedNote Link Extraction/Content Collection Tool</b>：Extract account-published, favorites, and liked notes links; extract search result notes links and user links; collect RedNote notes information; extract RedNote notes download addresses; download RedNote notes files!</p>
 <p>🔥 "RedNote", "XiaoHongShu" and "小红书" have the same meaning, and this project is collectively referred to as "RedNote".</p>
 <p>⭐ Due to the author's limited energy, I was unable to update the English document in a timely manner, and the content may have become outdated, partial translation is machine translation, the translation result may be incorrect, Suggest referring to Chinese documentation. If you want to contribute to translation, we warmly welcome you.</p>
+<h1>🚀 Go API and React Web Console</h1>
+<p>The core REST API is now implemented in Go, with a React 19 + HeroUI v3 web console. The legacy Python desktop, TUI, CLI and MCP code remains available.</p>
+<ul>
+<li>Build the UI with <code>npm --prefix web ci &amp;&amp; npm --prefix web run build</code>, then start <code>go run ./cmd/api</code></li>
+<li>Web console: <code>http://127.0.0.1:5556/</code></li>
+<li>API documentation: <code>http://127.0.0.1:5556/docs</code></li>
+<li>Docker: <code>docker compose up --build -d</code></li>
+<li>Full development, configuration, CNB and deployment guide: <a href="docs/GO_API.md">docs/GO_API.md</a></li>
+</ul>
 <h1>📑 Project Features</h1>
 <details>
 <summary>Program Features and User Script Features (Click to Expand)</summary>
@@ -102,29 +111,15 @@
 <li>Run the command <code>uv run main.py</code> to start XHS-Downloader</li>
 </ol>
 </ol>
-<h2>⌨️ Docker Run</h2>
+<h2>⌨️ Docker Run (Go API + React)</h2>
+<p>The root <code>Dockerfile</code> now builds only the Go core API and React web console; it does not package the Python desktop, TUI or MCP modes.</p>
 <ol>
-<li>Get Image</li>
-<ul>
-<li>Method 1: Build the image using the <code>Dockerfile</code></li>
-<li>Method 2: Pull the image using the command <code>docker pull joeanamier/xhs-downloader</code></li>
-<li>Method 3: Pull the image using the command <code>docker pull ghcr.io/joeanamier/xhs-downloader</code></li>
-</ul>
-<li>Create Container</li>
-<ul>
-<li>TUI Mode: <code>docker run --name ContainerName(optional) -p HostPort:5556 -v xhs_downloader_volume:/app/Volume -it &lt;image name&gt;</code></li>
-<li>API Mode: <code>docker run --name ContainerName(optional) -p HostPort:5556 -v xhs_downloader_volume:/app/Volume -it &lt;image name&gt; python main.py api</code></li>
-<li>MCP Mode: <code>docker run --name ContainerName(optional) -p HostPort:5556 -v xhs_downloader_volume:/app/Volume -it &lt;image name&gt; python main.py mcp</code></li>
-<br><b>Note:</b> The <code>&lt;image name&gt;</code> here must be consistent with the image name you used in the first step (<code>joeanamier/xhs-downloader</code> or <code>ghcr.io/joeanamier/xhs-downloader</code>)
-</ul>
-<li>Run Container
-<ul>
-<li>Start Container: <code>docker start -i ContainerName/ContainerID</code></li>
-<li>Restart Container: <code>docker restart -i ContainerName/ContainerID</code></li>
-</ul>
-</li>
+<li>Run <code>docker compose up --build -d</code></li>
+<li>Open <code>http://127.0.0.1:5556/</code></li>
+<li>Use <code>docker compose logs -f api</code> to follow logs</li>
+<li>Run <code>docker compose down</code> to stop; downloads persist in the <code>xhs-volume</code> named volume</li>
 </ol>
-<p>When running the project via Docker, the <b>command line call mode</b> is not supported. The <b>clipboard reading</b> and <b>clipboard monitoring</b> functions are unavailable, but pasting content notes fine. Please provide feedback if other features are not functioning properly!</p>
+<p>Direct Docker usage: <code>docker build -t xhs-downloader:local .</code>, then <code>docker run --rm -p 5556:5556 -v xhs-volume:/app/Volume xhs-downloader:local</code>.</p>
 <h1>🛠 Command Line Mode</h1>
 <p>The project supports command line mode. If you want to download specific images from a text and image notes, you can use this mode to set the image sequence number you want to download!</p>
 <p><strong>Note:</strong> When the <code>--index</code> parameter is not set, multiple notes links can be passed in. All links must be enclosed in quotation marks and separated by spaces. When the <code>--index</code> parameter is set, multiple notes links are not supported. Even if multiple links are passed in, the program will only process the first link!</p>
@@ -139,11 +134,12 @@
 <hr>
 <img src="static/screenshot/命令行模式截图EN2.png" alt="">
 <h1>🖥 Server Mode</h1>
-<p>Server modes include API mode and MCP mode!</p>
-<h2>API Mode</h2>
-<p><b>Start:</b> Run the command: <code>python .\main.py api</code></p>
+<p>The Go service provides the core REST API and React web console. Python MCP mode remains available for compatibility.</p>
+<h2>Go API Mode</h2>
+<p><b>Start:</b> Run <code>npm --prefix web run build</code>, then <code>go run ./cmd/api</code></p>
 <p><b>Stop:</b> Press <code>Ctrl</code> + <code>C</code> to stop the server</p>
-<p>Open <code>http://127.0.0.1:5556/docs</code> or <code>http://127.0.0.1:5556/redoc</code>; you will see automatically generated interactive API documentation!</p>
+<p>Open <code>http://127.0.0.1:5556/</code> for the web console, or <code>/docs</code> and <code>/openapi.json</code> for API documentation.</p>
+<p>The legacy <code>python main.py api</code> entry point remains available, but is no longer the Docker default.</p>
 <p><b>Request endpoint:</b>
 <code>/xhs/detail</code></p>
 <p><b>Request method:</b>
@@ -175,21 +171,21 @@
 </tr>
 <tr>
 <td align="center">index</td>
-<td align="center">list[int]</td>
-<td align="center">Download specific image files by index, only effective for text and image notes; not effective when the <code>download</code> parameter is set to <code>false</code>; Optional parameter</td>
+<td align="center">list[int | str]</td>
+<td align="center">Download specific image files by positive integer index, only effective for text and image notes; not effective when the <code>download</code> parameter is set to <code>false</code>; Optional parameter</td>
 <td align="center">null</td>
 </tr>
 <tr>
 <td align="center">cookie</td>
 <td align="center">str</td>
 <td align="center">Cookie used when requesting data; Optional parameter</td>
-<td align="center">Settings cookie Value</td>
+<td align="center">null</td>
 </tr>
 <tr>
 <td align="center">proxy</td>
 <td align="center">str</td>
 <td align="center">Proxy used when requesting data; Optional parameter</td>
-<td align="center">Settings proxy Value</td>
+<td align="center">null</td>
 </tr>
 <tr>
 <td align="center">skip</td>
@@ -199,6 +195,7 @@
 </tr>
 </tbody>
 </table>
+<p><b>Proxy security:</b> The Go API rejects proxies resolving to private, loopback or link-local addresses by default. Set <code>XHS_ALLOW_PRIVATE_PROXY=true</code> only for trusted local deployments, never for a public service.</p>
 <p><b>Code example:</b></p>
 <pre>
 async def example_api():

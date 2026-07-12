@@ -19,6 +19,15 @@
 <br>
 <p>🔥 <b>小红书链接提取/作品采集工具</b>：提取账号发布、收藏、点赞、专辑作品链接；提取搜索结果作品链接、用户链接；采集小红书作品信息；提取小红书作品下载地址；下载小红书作品文件！</p>
 <p>🔥 “小红书”、“XiaoHongShu”、“RedNote” 含义相同，本项目统称为 “小红书”</p>
+<h1>🚀 Go API 与 React Web 控制台</h1>
+<p>核心 REST API 已使用 Go 重构，并新增 React 19 + HeroUI v3 Web 控制台；原 Python 桌面版、TUI、CLI 与 MCP 代码继续保留。</p>
+<ul>
+<li>启动：<code>npm --prefix web ci &amp;&amp; npm --prefix web run build</code>，然后运行 <code>go run ./cmd/api</code></li>
+<li>Web 控制台：<code>http://127.0.0.1:5556/</code></li>
+<li>API 文档：<code>http://127.0.0.1:5556/docs</code></li>
+<li>Docker：<code>docker compose up --build -d</code></li>
+<li>完整开发、配置、CNB 与部署说明：<a href="docs/GO_API.md">docs/GO_API.md</a></li>
+</ul>
 <h1>📑 项目功能</h1>
 <details>
 <summary>项目程序与用户脚本功能清单（点击展开）</summary>
@@ -101,29 +110,15 @@
 <li>运行 <code>uv run main.py</code> 命令启动 XHS-Downloader</li>
 </ol>
 </ol>
-<h2>⌨️ Docker 运行</h2>
+<h2>⌨️ Docker 运行（Go API + React）</h2>
+<p>当前根目录 <code>Dockerfile</code> 仅构建 Go 核心 API 与 React Web 控制台，不包含 Python 桌面版、TUI 或 MCP。</p>
 <ol>
-<li>获取镜像</li>
-<ul>
-<li>方式一：使用 <code>Dockerfile</code> 文件构建镜像</li>
-<li>方式二：使用 <code>docker pull joeanamier/xhs-downloader</code> 命令拉取镜像</li>
-<li>方式三：使用 <code>docker pull ghcr.io/joeanamier/xhs-downloader</code> 命令拉取镜像</li>
-</ul>
-<li>创建容器</li>
-<ul>
-<li>TUI 模式：<code>docker run --name 容器名称(可选) -p 主机端口号:5556 -v xhs_downloader_volume:/app/Volume -it &lt;镜像名称&gt;</code></li>
-<li>API 模式：<code>docker run --name 容器名称(可选) -p 主机端口号:5556 -v xhs_downloader_volume:/app/Volume -it &lt;镜像名称&gt; python main.py api</code></li>
-<li>MCP 模式：<code>docker run --name 容器名称(可选) -p 主机端口号:5556 -v xhs_downloader_volume:/app/Volume -it &lt;镜像名称&gt; python main.py mcp</code></li>
-<br><b>注意：</b>此处的 <code>&lt;镜像名称&gt;</code> 需与您在第一步中使用的镜像名称保持一致（<code>joeanamier/xhs-downloader</code> 或 <code>ghcr.io/joeanamier/xhs-downloader</code>）
-</ul>
-<li>运行容器
-<ul>
-<li>启动容器：<code>docker start -i 容器名称/容器 ID</code></li>
-<li>重启容器：<code>docker restart -i 容器名称/容器 ID</code></li>
-</ul>
-</li>
+<li>运行 <code>docker compose up --build -d</code> 构建并启动服务</li>
+<li>访问 <code>http://127.0.0.1:5556/</code> 使用 Web 控制台</li>
+<li>运行 <code>docker compose logs -f api</code> 查看日志</li>
+<li>运行 <code>docker compose down</code> 停止服务；下载记录与文件保存在命名卷 <code>xhs-volume</code></li>
 </ol>
-<p>Docker 运行项目时不支持 <b>命令行调用模式</b>，无法使用 <b>读取剪贴板</b> 与 <b>监听剪贴板</b> 功能，可以正常粘贴内容，其他功能如有异常请反馈！</p>
+<p>也可以直接运行：<code>docker build -t xhs-downloader:local .</code>，然后执行 <code>docker run --rm -p 5556:5556 -v xhs-volume:/app/Volume xhs-downloader:local</code>。</p>
 <h1>🛠 命令行模式</h1>
 <p>项目支持命令行运行模式，若想要下载图文作品的部分图片，可以使用此模式设置需要下载的图片序号！</p>
 <p><strong>注意：</strong>未设置 <code>--index</code> 参数时，支持传入多个作品链接，全部链接需要使用引号包围，链接之间使用空格分隔；已设置 <code>--index</code> 参数时，不支持传入多个作品链接，即使传入多个作品链接，程序仅处理首个作品链接！</p>
@@ -138,11 +133,12 @@
 <hr>
 <img src="static/screenshot/命令行模式截图CN2.png" alt="">
 <h1>🖥 服务器模式</h1>
-<p>服务器模式包含 API 模式和 MCP 模式！</p>
-<h2>API 模式</h2>
-<p><b>启动：</b>运行命令：<code>python .\main.py api</code></p>
+<p>Go 服务负责核心 REST API 与 React Web 控制台；Python MCP 模式作为兼容功能继续保留。</p>
+<h2>Go API 模式</h2>
+<p><b>启动：</b>先运行 <code>npm --prefix web run build</code>，再运行 <code>go run ./cmd/api</code></p>
 <p><b>关闭：</b>按下 <code>Ctrl</code> + <code>C</code> 关闭服务器</p>
-<p>访问 <code>http://127.0.0.1:5556/docs</code> 或者 <code>http://127.0.0.1:5556/redoc</code>；你会看到自动生成的交互式 API 文档！</p>
+<p>访问 <code>http://127.0.0.1:5556/</code> 使用 Web 控制台；访问 <code>/docs</code> 或 <code>/openapi.json</code> 查看 API 说明。</p>
+<p>旧 Python API 入口 <code>python main.py api</code> 仍保留用于兼容，但不再是 Docker 默认服务。</p>
 <p><b>请求接口：</b><code>/xhs/detail</code></p>
 <p><b>请求方法：</b><code>POST</code></p>
 <p><b>请求格式：</b><code>JSON</code></p>
@@ -171,21 +167,21 @@
 </tr>
 <tr>
 <td align="center">index</td>
-<td align="center">list[int]</td>
-<td align="center">下载指定序号的图片文件，仅对图文作品生效；<code>download</code> 参数设置为 <code>false</code> 时不生效；可选参数</td>
+<td align="center">list[int | str]</td>
+<td align="center">下载指定序号的图片文件，仅接受正整数，仅对图文作品生效；<code>download</code> 参数设置为 <code>false</code> 时不生效；可选参数</td>
 <td align="center">null</td>
 </tr>
 <tr>
 <td align="center">cookie</td>
 <td align="center">str</td>
 <td align="center">请求数据时使用的 Cookie；可选参数</td>
-<td align="center">配置文件 cookie 参数</td>
+<td align="center">null</td>
 </tr>
 <tr>
 <td align="center">proxy</td>
 <td align="center">str</td>
 <td align="center">请求数据时使用的代理；可选参数</td>
-<td align="center">配置文件 proxy 参数</td>
+<td align="center">null</td>
 </tr>
 <tr>
 <td align="center">skip</td>
@@ -195,6 +191,7 @@
 </tr>
 </tbody>
 </table>
+<p><b>代理安全：</b>Go API 默认拒绝解析到私网、回环或链路本地地址的代理。仅在受信本地环境需要私网代理时设置 <code>XHS_ALLOW_PRIVATE_PROXY=true</code>，不要在公开服务中开启。</p>
 <p><b>代码示例：</b></p>
 <pre>
 async def example_api():
