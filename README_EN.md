@@ -112,14 +112,16 @@
 </ol>
 </ol>
 <h2>⌨️ Docker Run (Go API + React)</h2>
-<p>The root <code>Dockerfile</code> now builds only the Go core API and React web console; it does not package the Python desktop, TUI or MCP modes.</p>
+<p>The root <code>Dockerfile</code> builds only the Go core API, React user site, and admin site; it does not package the Python desktop, TUI, or MCP modes.</p>
 <ol>
+<li>Copy <code>.env.example</code> to <code>.env</code> and set a strong, unique <code>XHS_ADMIN_PASSWORD</code></li>
 <li>Run <code>docker compose up --build -d</code></li>
-<li>Open <code>http://127.0.0.1:5556/</code></li>
+<li>Open <code>http://127.0.0.1:5556/</code> for the user site and <code>/admin/login</code> for the admin site</li>
 <li>Use <code>docker compose logs -f api</code> to follow logs</li>
-<li>Run <code>docker compose down</code> to stop; downloads persist in the <code>xhs-volume</code> named volume</li>
+<li>Run <code>docker compose down</code> to stop; SQLite, the encryption key, and downloads persist in the <code>xhs-volume</code> named volume</li>
 </ol>
-<p>Direct Docker usage: <code>docker build -t xhs-downloader:local .</code>, then <code>docker run --rm -p 5556:5556 -v xhs-volume:/app/Volume xhs-downloader:local</code>.</p>
+<p><strong>Deployment constraint:</strong> run exactly one application instance against the same persistent volume; do not scale replicas. A second writer on that volume exits on the <code>.xhs-downloader.lock</code> conflict. <code>XHS_DATABASE_PATH</code> must remain inside <code>XHS_VOLUME_DIR</code>. Set <code>XHS_SESSION_COOKIE_SECURE=true</code> behind production HTTPS. See <a href="docs/GO_API.md">the Go API deployment guide</a> for read-only external Secrets, backups, and all environment variables.</p>
+<p>Direct Docker usage: <code>docker build -t xhs-downloader:local .</code>, then <code>docker run --rm -p 5556:5556 --env-file .env -v xhs-volume:/app/Volume xhs-downloader:local</code>.</p>
 <h1>🛠 Command Line Mode</h1>
 <p>The project supports command line mode. If you want to download specific images from a text and image notes, you can use this mode to set the image sequence number you want to download!</p>
 <p><strong>Note:</strong> When the <code>--index</code> parameter is not set, multiple notes links can be passed in. All links must be enclosed in quotation marks and separated by spaces. When the <code>--index</code> parameter is set, multiple notes links are not supported. Even if multiple links are passed in, the program will only process the first link!</p>
@@ -134,13 +136,13 @@
 <hr>
 <img src="static/screenshot/命令行模式截图EN2.png" alt="">
 <h1>🖥 Server Mode</h1>
-<p>The Go service provides the core REST API and React web console. Python MCP mode remains available for compatibility.</p>
+<p>The Go service provides the core REST API, React user and admin sites, and SQLite version history. Python MCP mode remains available for compatibility.</p>
 <h2>Go API Mode</h2>
-<p><b>Start:</b> Run <code>npm --prefix web run build</code>, then <code>go run ./cmd/api</code></p>
+<p><b>Start:</b> Set <code>XHS_ADMIN_PASSWORD</code>, run the frontend tests and build, then run <code>go run ./cmd/api</code></p>
 <p><b>Stop:</b> Press <code>Ctrl</code> + <code>C</code> to stop the server</p>
-<p>Open <code>http://127.0.0.1:5556/</code> for the web console, or <code>/docs</code> and <code>/openapi.json</code> for API documentation.</p>
-<p>The legacy <code>python main.py api</code> entry point remains available, but is no longer the Docker default.</p>
-<p><b>Request endpoint:</b>
+<p>Open <code>http://127.0.0.1:5556/</code> for the user site and <code>/admin/login</code> for the admin site. API documentation is available at <code>/docs</code> and <code>/openapi.json</code>.</p>
+<p>New clients should use <code>POST /api/v1/extractions</code>, which accepts only a link and optional request-scoped connection overrides; admin settings control persistence and refetching. The legacy Python API remains available but is no longer the Docker default.</p>
+<p><b>Compatibility endpoint:</b>
 <code>/xhs/detail</code></p>
 <p><b>Request method:</b>
 <code>POST</code></p>
@@ -166,13 +168,13 @@
 <tr>
 <td align="center">download</td>
 <td align="center">bool</td>
-<td align="center">Whether to download the notes file; set to <code>true</code> will take more time; Optional parameter</td>
+<td align="center"><code>false</code> stores no resources for this request; <code>true</code> stores only text, image, or video categories also enabled by the admin policy; Optional parameter</td>
 <td align="center">false</td>
 </tr>
 <tr>
 <td align="center">index</td>
 <td align="center">list[int | str]</td>
-<td align="center">Download specific image files by positive integer index, only effective for text and image notes; not effective when the <code>download</code> parameter is set to <code>false</code>; Optional parameter</td>
+<td align="center">Only with <code>download=true</code>, select static images and matching live-photo videos by positive integer or integer string; ignored for regular videos; Optional parameter</td>
 <td align="center">null</td>
 </tr>
 <tr>
@@ -195,6 +197,8 @@
 </tr>
 </tbody>
 </table>
+<p><b>Persistence semantics:</b> <code>download</code> only gates persistence for this compatibility request. Actual resource categories are still limited by the admin policy, and <code>download=false</code> stores nothing. Request Cookie and proxy values are removed from response parameters. With <code>download=true</code>, partial save failures still return the parsed work and expose only stable codes in <code>data.下载错误</code>, never raw network or filesystem errors.</p>
+<p><b>Resource limit:</b> <code>XHS_MAX_MEDIA_BYTES</code> defaults to 2 GiB for each saved image or video. See <a href="docs/ADMIN_WEB.md">the admin and SQLite guide</a> for the admin site, read-only Secret, and single-instance operations.</p>
 <p><b>Proxy security:</b> The Go API rejects proxies resolving to private, loopback or link-local addresses by default. Set <code>XHS_ALLOW_PRIVATE_PROXY=true</code> only for trusted local deployments, never for a public service.</p>
 <p><b>Code example:</b></p>
 <pre>

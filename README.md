@@ -111,14 +111,16 @@
 </ol>
 </ol>
 <h2>⌨️ Docker 运行（Go API + React）</h2>
-<p>当前根目录 <code>Dockerfile</code> 仅构建 Go 核心 API 与 React Web 控制台，不包含 Python 桌面版、TUI 或 MCP。</p>
+<p>根目录 <code>Dockerfile</code> 仅构建 Go 核心 API、React 用户端和管理端，不包含 Python 桌面版、TUI 或 MCP。</p>
 <ol>
+<li>复制 <code>.env.example</code> 为 <code>.env</code>，至少设置强且唯一的 <code>XHS_ADMIN_PASSWORD</code></li>
 <li>运行 <code>docker compose up --build -d</code> 构建并启动服务</li>
-<li>访问 <code>http://127.0.0.1:5556/</code> 使用 Web 控制台</li>
+<li>访问 <code>http://127.0.0.1:5556/</code> 使用用户端，访问 <code>/admin/login</code> 登录管理端</li>
 <li>运行 <code>docker compose logs -f api</code> 查看日志</li>
-<li>运行 <code>docker compose down</code> 停止服务；下载记录与文件保存在命名卷 <code>xhs-volume</code></li>
+<li>运行 <code>docker compose down</code> 停止服务；SQLite、加密密钥和下载文件保存在命名卷 <code>xhs-volume</code></li>
 </ol>
-<p>也可以直接运行：<code>docker build -t xhs-downloader:local .</code>，然后执行 <code>docker run --rm -p 5556:5556 -v xhs-volume:/app/Volume xhs-downloader:local</code>。</p>
+<p><strong>部署约束：</strong>仅运行一个应用实例并始终挂载同一个卷，不要扩容多个副本；同卷第二实例会因 <code>.xhs-downloader.lock</code> 冲突退出；<code>XHS_DATABASE_PATH</code> 必须位于 <code>XHS_VOLUME_DIR</code> 内。生产 HTTPS 必须设置 <code>XHS_SESSION_COOKIE_SECURE=true</code>。外置只读密钥、备份和完整变量说明见 <a href="docs/GO_API.md">Go API 部署文档</a>。</p>
+<p>也可以直接运行：<code>docker build -t xhs-downloader:local .</code>，然后执行 <code>docker run --rm -p 5556:5556 --env-file .env -v xhs-volume:/app/Volume xhs-downloader:local</code>。</p>
 <h1>🛠 命令行模式</h1>
 <p>项目支持命令行运行模式，若想要下载图文作品的部分图片，可以使用此模式设置需要下载的图片序号！</p>
 <p><strong>注意：</strong>未设置 <code>--index</code> 参数时，支持传入多个作品链接，全部链接需要使用引号包围，链接之间使用空格分隔；已设置 <code>--index</code> 参数时，不支持传入多个作品链接，即使传入多个作品链接，程序仅处理首个作品链接！</p>
@@ -133,13 +135,13 @@
 <hr>
 <img src="static/screenshot/命令行模式截图CN2.png" alt="">
 <h1>🖥 服务器模式</h1>
-<p>Go 服务负责核心 REST API 与 React Web 控制台；Python MCP 模式作为兼容功能继续保留。</p>
+<p>Go 服务负责核心 REST API、React 用户端、管理端与 SQLite 版本历史；Python MCP 模式作为兼容功能继续保留。</p>
 <h2>Go API 模式</h2>
-<p><b>启动：</b>先运行 <code>npm --prefix web run build</code>，再运行 <code>go run ./cmd/api</code></p>
+<p><b>启动：</b>设置 <code>XHS_ADMIN_PASSWORD</code>，运行前端测试与构建后再执行 <code>go run ./cmd/api</code></p>
 <p><b>关闭：</b>按下 <code>Ctrl</code> + <code>C</code> 关闭服务器</p>
-<p>访问 <code>http://127.0.0.1:5556/</code> 使用 Web 控制台；访问 <code>/docs</code> 或 <code>/openapi.json</code> 查看 API 说明。</p>
-<p>旧 Python API 入口 <code>python main.py api</code> 仍保留用于兼容，但不再是 Docker 默认服务。</p>
-<p><b>请求接口：</b><code>/xhs/detail</code></p>
+<p>访问 <code>http://127.0.0.1:5556/</code> 使用用户端，访问 <code>/admin/login</code> 登录管理端；<code>/docs</code> 和 <code>/openapi.json</code> 提供 API 说明。</p>
+<p>新客户端推荐使用 <code>POST /api/v1/extractions</code>；它只接受链接和可选的本次连接覆盖，保存与重新抓取策略由管理端控制。旧 Python API 入口仍保留，但不再是 Docker 默认服务。</p>
+<p><b>兼容请求接口：</b><code>/xhs/detail</code></p>
 <p><b>请求方法：</b><code>POST</code></p>
 <p><b>请求格式：</b><code>JSON</code></p>
 <p><b>请求参数：</b></p>
@@ -162,13 +164,13 @@
 <tr>
 <td align="center">download</td>
 <td align="center">bool</td>
-<td align="center">是否下载作品文件；设置为 <code>true</code> 将会耗费更多时间；可选参数</td>
+<td align="center"><code>false</code> 时本次不保存任何资源；<code>true</code> 时仅保存管理端已允许的文案、图片或视频类别；可选参数</td>
 <td align="center">false</td>
 </tr>
 <tr>
 <td align="center">index</td>
 <td align="center">list[int | str]</td>
-<td align="center">下载指定序号的图片文件，仅接受正整数，仅对图文作品生效；<code>download</code> 参数设置为 <code>false</code> 时不生效；可选参数</td>
+<td align="center">仅在 <code>download=true</code> 时筛选图文的静态图片及对应实况视频，接受正整数或整数字符串；普通视频忽略；可选参数</td>
 <td align="center">null</td>
 </tr>
 <tr>
@@ -191,6 +193,8 @@
 </tr>
 </tbody>
 </table>
+<p><b>保存语义：</b><code>download</code> 只控制兼容接口本次是否允许落盘，实际保存类别仍受管理端开关限制；<code>download=false</code> 不保存。Cookie 和代理仅用于本次请求，并会从响应参数中清除。<code>download=true</code> 时即使部分资源保存失败也继续返回作品数据，并在 <code>data.下载错误</code> 中提供稳定错误码，不回显原始网络或文件错误。</p>
+<p><b>资源上限：</b><code>XHS_MAX_MEDIA_BYTES</code> 默认限制每个保存的图片或视频为 2 GiB。管理端、SQLite、只读 Secret 与单实例运维详见 <a href="docs/ADMIN_WEB.md">管理端说明</a>。</p>
 <p><b>代理安全：</b>Go API 默认拒绝解析到私网、回环或链路本地地址的代理。仅在受信本地环境需要私网代理时设置 <code>XHS_ALLOW_PRIVATE_PROXY=true</code>，不要在公开服务中开启。</p>
 <p><b>代码示例：</b></p>
 <pre>
