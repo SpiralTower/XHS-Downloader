@@ -6,29 +6,39 @@ services:
     image: xhs-downloader:local
     init: true
     restart: unless-stopped
+    stop_grace_period: 15s
+    # The process also holds /app/Volume/.xhs-downloader.lock and rejects
+    # a concurrent writer. replicas=1 remains the required operating model.
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
     environment:
       HOST: 0.0.0.0
-      PORT: "5556"
+      PORT: "${PORT:-5556}"
       WEB_DIST_DIR: /app/web/dist
       XHS_VOLUME_DIR: /app/Volume
+      # Must resolve inside XHS_VOLUME_DIR; the service rejects symlink escapes.
+      XHS_DATABASE_PATH: "${XHS_DATABASE_PATH:-/app/Volume/Data/xhs.sqlite3}"
+      XHS_SECRET_KEY_PATH: "${XHS_SECRET_KEY_PATH:-}"
+      XHS_ADMIN_USERNAME: "${XHS_ADMIN_USERNAME:-admin}"
+      XHS_ADMIN_PASSWORD: "${XHS_ADMIN_PASSWORD:?set XHS_ADMIN_PASSWORD in .env before starting}"
+      XHS_ADMIN_SESSION_TTL: "${XHS_ADMIN_SESSION_TTL:-12h}"
+      XHS_SESSION_COOKIE_SECURE: "${XHS_SESSION_COOKIE_SECURE:-false}"
       XHS_REQUEST_TIMEOUT: "${XHS_REQUEST_TIMEOUT:-15s}"
       XHS_DOWNLOAD_TIMEOUT: "${XHS_DOWNLOAD_TIMEOUT:-30m}"
       XHS_DOWNLOAD_IDLE_TIMEOUT: "${XHS_DOWNLOAD_IDLE_TIMEOUT:-60s}"
       XHS_ALLOW_PRIVATE_PROXY: "${XHS_ALLOW_PRIVATE_PROXY:-false}"
+      XHS_MAX_BODY_BYTES: "${XHS_MAX_BODY_BYTES:-1048576}"
+      XHS_MAX_MEDIA_BYTES: "${XHS_MAX_MEDIA_BYTES:-2147483648}"
     ports:
-      - "${XHS_PORT:-5556}:5556"
+      - "${XHS_PORT:-5556}:${PORT:-5556}"
     volumes:
       - xhs-volume:/app/Volume
     healthcheck:
       test:
-        - CMD
-        - wget
-        - -q
-        - -T
-        - "3"
-        - -O
-        - /dev/null
-        - http://127.0.0.1:5556/healthz
+        - CMD-SHELL
+        - wget -q -T 3 -O /dev/null "http://127.0.0.1:$${PORT}/healthz" || exit 1
       interval: 30s
       timeout: 5s
       start_period: 10s

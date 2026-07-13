@@ -30,7 +30,7 @@ FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 app \
     && adduser -S -D -H -h /app -u 10001 -G app app \
-    && mkdir -p /app/web/dist /app/Volume \
+    && mkdir -p /app/web/dist /app/Volume/Data \
     && chown -R app:app /app
 
 WORKDIR /app
@@ -47,11 +47,19 @@ ENV HOST=0.0.0.0 \
     PORT=5556 \
     WEB_DIST_DIR=/app/web/dist \
     XHS_VOLUME_DIR=/app/Volume \
+    XHS_DATABASE_PATH=/app/Volume/Data/xhs.sqlite3 \
+    XHS_ADMIN_USERNAME=admin \
     XHS_REQUEST_TIMEOUT=15s \
     XHS_DOWNLOAD_TIMEOUT=30m \
     XHS_DOWNLOAD_IDLE_TIMEOUT=60s \
     XHS_ALLOW_PRIVATE_PROXY=false \
+    XHS_MAX_MEDIA_BYTES=2147483648 \
+    XHS_SESSION_COOKIE_SECURE=false \
     HOME=/app
+
+# Leave XHS_SECRET_KEY_PATH unset to let the service manage secrets.key beside
+# the SQLite database. An explicit path may point at a pre-provisioned,
+# read-only 32-byte secret that is readable by UID/GID 10001.
 
 VOLUME ["/app/Volume"]
 EXPOSE 5556
@@ -59,7 +67,7 @@ EXPOSE 5556
 USER app:app
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -q -T 3 -O /dev/null http://127.0.0.1:5556/healthz || exit 1
+    CMD wget -q -T 3 -O /dev/null "http://127.0.0.1:${PORT}/healthz" || exit 1
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/app/xhs-api"]
