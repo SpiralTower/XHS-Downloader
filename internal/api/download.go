@@ -24,6 +24,7 @@ const defaultDownloadConcurrency = 4
 var (
 	errDownloadIdleTimeout = errors.New("media download idle timeout")
 	errInvalidMedia        = errors.New("invalid media content")
+	errMediaTooLarge       = errors.New("media exceeds configured size limit")
 )
 
 type downloadTask struct {
@@ -33,8 +34,9 @@ type downloadTask struct {
 }
 
 type downloadLimits struct {
-	totalTimeout time.Duration
-	idleTimeout  time.Duration
+	totalTimeout  time.Duration
+	idleTimeout   time.Duration
+	maxMediaBytes int64
 }
 
 type workDownloadLock struct {
@@ -45,8 +47,9 @@ type workDownloadLock struct {
 type downloadCoordinator struct {
 	slots chan struct{}
 
-	totalTimeout time.Duration
-	idleTimeout  time.Duration
+	totalTimeout  time.Duration
+	idleTimeout   time.Duration
+	maxMediaBytes int64
 
 	mu    sync.Mutex
 	works map[string]*workDownloadLock
@@ -61,10 +64,11 @@ func newDownloadCoordinator(concurrency int, limits ...downloadLimits) *download
 		configured = limits[0]
 	}
 	return &downloadCoordinator{
-		slots:        make(chan struct{}, concurrency),
-		totalTimeout: configured.totalTimeout,
-		idleTimeout:  configured.idleTimeout,
-		works:        make(map[string]*workDownloadLock),
+		slots:         make(chan struct{}, concurrency),
+		totalTimeout:  configured.totalTimeout,
+		idleTimeout:   configured.idleTimeout,
+		maxMediaBytes: configured.maxMediaBytes,
+		works:         make(map[string]*workDownloadLock),
 	}
 }
 
@@ -199,6 +203,7 @@ func downloadWork(
 					task,
 					coordinator.idleTimeout,
 					true,
+					coordinator.maxMediaBytes,
 				)
 			})
 			if err != nil {
@@ -250,13 +255,18 @@ func downloadFile(
 	task downloadTask,
 	idleTimeout time.Duration,
 	allowResumeRetry bool,
+	maxMediaBytesValues ...int64,
 ) error {
+	maxMediaBytes := defaultMaxMediaBytes
+	if len(maxMediaBytesValues) > 0 && maxMediaBytesValues[0] > 0 {
+		maxMediaBytes = maxMediaBytesValues[0]
+	}
 	secureURL, err := normalizedMediaRequestURL(task.url)
 	if err != nil {
 		return err
 	}
 	task.url = secureURL
-	exists, err := completedDownloadExists(downloadDir, task)
+	exists, err := completedDownloadExists(downloadDir, task, maxMediaBytes)
 	if err != nil {
 		return err
 	}
@@ -269,6 +279,10 @@ func downloadFile(
 	offset, metadata, err := loadPartialState(partial, metadataPath, task.url)
 	if err != nil {
 		return err
+	}
+	if offset > maxMediaBytes {
+		_ = resetPartialState(partial, metadataPath)
+		return fmt.Errorf("download %s: %w", task.baseName, errMediaTooLarge)
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, task.url, nil)
@@ -299,6 +313,7 @@ func downloadFile(
 				ctx, client, headers, tempDir, downloadDir, task, idleTimeout,
 				allowResumeRetry, response, partial, metadataPath,
 				fmt.Errorf("download %s: invalid partial response", task.baseName),
+				maxMediaBytes,
 			)
 		}
 		expectedTotal = total
@@ -311,12 +326,14 @@ func downloadFile(
 			ctx, client, headers, tempDir, downloadDir, task, idleTimeout,
 			allowResumeRetry, response, partial, metadataPath,
 			fmt.Errorf("download %s: upstream returned %s", task.baseName, response.Status),
+			maxMediaBytes,
 		)
 	case offset == 0 && response.StatusCode == http.StatusPartialContent:
 		return retryDownloadFromStart(
 			ctx, client, headers, tempDir, downloadDir, task, idleTimeout,
 			allowResumeRetry, response, partial, metadataPath,
 			fmt.Errorf("download %s: unexpected partial response", task.baseName),
+			maxMediaBytes,
 		)
 	case response.StatusCode != http.StatusOK:
 		defer response.Body.Close()
@@ -326,6 +343,10 @@ func downloadFile(
 		expectedTotal = response.ContentLength
 	}
 	defer response.Body.Close()
+	if expectedTotal > maxMediaBytes {
+		_ = resetPartialState(partial, metadataPath)
+		return fmt.Errorf("download %s: %w", task.baseName, errMediaTooLarge)
+	}
 
 	flags := os.O_CREATE | os.O_WRONLY
 	if appendPartial {
@@ -348,9 +369,17 @@ func downloadFile(
 	}
 
 	body := &idleTimeoutReadCloser{ReadCloser: response.Body, timeout: idleTimeout}
-	_, copyErr := io.Copy(file, body)
+	remaining := maxMediaBytes - offset
+	copied, copyErr := io.Copy(file, io.LimitReader(body, remaining+1))
+	if copyErr == nil && copied > remaining {
+		copyErr = errMediaTooLarge
+	}
 	closeErr := file.Close()
 	if transferErr := errors.Join(copyErr, closeErr); transferErr != nil {
+		if errors.Is(copyErr, errMediaTooLarge) {
+			transferErr = errors.Join(transferErr, resetPartialState(partial, metadataPath))
+			return fmt.Errorf("download %s: %w", task.baseName, transferErr)
+		}
 		keepPartial, stateErr := partialCanResume(partial, expectedTotal, metadata)
 		transferErr = errors.Join(transferErr, stateErr)
 		if !keepPartial {
@@ -423,6 +452,7 @@ func retryDownloadFromStart(
 	response *http.Response,
 	partial, metadataPath string,
 	reason error,
+	maxMediaBytes int64,
 ) error {
 	_ = response.Body.Close()
 	if err := resetPartialState(partial, metadataPath); err != nil {
@@ -431,7 +461,7 @@ func retryDownloadFromStart(
 	if !allowRetry {
 		return reason
 	}
-	return downloadFile(ctx, client, headers, tempDir, downloadDir, task, idleTimeout, false)
+	return downloadFile(ctx, client, headers, tempDir, downloadDir, task, idleTimeout, false, maxMediaBytes)
 }
 
 func loadPartialState(partial, metadataPath, sourceURL string) (int64, partialMetadata, error) {
@@ -629,8 +659,12 @@ func (r *idleTimeoutReadCloser) Read(buffer []byte) (int, error) {
 	return length, err
 }
 
-func completedDownloadExists(downloadDir string, task downloadTask) (bool, error) {
+func completedDownloadExists(downloadDir string, task downloadTask, maxMediaBytesValues ...int64) (bool, error) {
 	extensions := []string{task.extension}
+	maxMediaBytes := int64(0)
+	if len(maxMediaBytesValues) > 0 {
+		maxMediaBytes = maxMediaBytesValues[0]
+	}
 	if task.extension == "jpeg" {
 		extensions = append(extensions, "jpg", "png", "webp", "gif", "bmp", "avif", "heic")
 	}
@@ -644,6 +678,15 @@ func completedDownloadExists(downloadDir string, task downloadTask) (bool, error
 			continue
 		}
 		if _, err := validatedMediaExtension(path, task.extension); err == nil {
+			if maxMediaBytes > 0 {
+				info, statErr := os.Stat(path)
+				if statErr != nil {
+					return false, statErr
+				}
+				if info.Size() > maxMediaBytes {
+					return false, fmt.Errorf("existing media %s: %w", task.baseName, errMediaTooLarge)
+				}
+			}
 			return true, nil
 		} else if !errors.Is(err, errInvalidMedia) {
 			return false, err

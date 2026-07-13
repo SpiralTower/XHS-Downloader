@@ -238,10 +238,49 @@ func videoURLs(note map[string]any, preference string) []string {
 }
 
 func mediaURLs(data map[string]any) ([]string, []any, error) {
-	urls, ok := data["下载地址"].([]string)
-	if !ok {
+	urls, err := mediaStringList(data["下载地址"])
+	if err != nil {
 		return nil, nil, fmt.Errorf("invalid media URL list")
 	}
-	lives, _ := data["动图地址"].([]any)
+	lives, err := mediaAnyList(data["动图地址"])
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid live media URL list")
+	}
 	return urls, lives, nil
+}
+
+func mediaStringList(value any) ([]string, error) {
+	switch items := value.(type) {
+	case []string:
+		return append([]string(nil), items...), nil
+	case []any:
+		result := make([]string, len(items))
+		for index, item := range items {
+			text, ok := item.(string)
+			if !ok {
+				return nil, errors.New("media URL entries must be strings")
+			}
+			result[index] = text
+		}
+		return result, nil
+	default:
+		return nil, errors.New("media URLs must be an array")
+	}
+}
+
+func mediaAnyList(value any) ([]any, error) {
+	switch items := value.(type) {
+	case nil:
+		return nil, nil
+	case []any:
+		return append([]any(nil), items...), nil
+	case []string:
+		result := make([]any, len(items))
+		for index, item := range items {
+			result[index] = item
+		}
+		return result, nil
+	default:
+		return nil, errors.New("live media URLs must be an array")
+	}
 }

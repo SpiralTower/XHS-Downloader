@@ -73,7 +73,6 @@ func TestDetailContractWithFixture(t *testing.T) {
 			}, nil
 		})}, nil
 	}
-
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/xhs/detail", strings.NewReader(`{"url":"https://www.xiaohongshu.com/explore/fixture123","download":false}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -208,6 +207,12 @@ func TestPageTimeoutDoesNotLimitMediaStreaming(t *testing.T) {
 			}, nil
 		})}, nil
 	}
+	enabled := true
+	if _, err := app.store.updateSettings(t.Context(), settingsUpdate{
+		Revision: 1, SaveImages: &enabled, SaveVideos: &enabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(
@@ -219,7 +224,7 @@ func TestPageTimeoutDoesNotLimitMediaStreaming(t *testing.T) {
 	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), "下载错误") {
 		t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
 	}
-	files, err := filepath.Glob(filepath.Join(root, "Volume", "Download", "*"))
+	files, err := filepath.Glob(filepath.Join(root, "Volume", "Download", "fixture123", "v1", "*"))
 	if err != nil || len(files) != 2 {
 		t.Fatalf("downloaded files = %#v, err = %v", files, err)
 	}

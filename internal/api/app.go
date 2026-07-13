@@ -10,22 +10,36 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 type App struct {
-	config        Config
-	logger        *log.Logger
-	records       *recordStore
-	handler       http.Handler
-	startedAt     time.Time
-	clientFactory clientFactory
-	clients       *httpClientPool
-	downloads     *downloadCoordinator
+	config           Config
+	logger           *log.Logger
+	records          *recordStore
+	store            *appStore
+	handler          http.Handler
+	startedAt        time.Time
+	clientFactory    clientFactory
+	clients          *httpClientPool
+	downloads        *downloadCoordinator
+	adminFingerprint [32]byte
+	adminConfigured  bool
+	loginLimiter     *adminLoginLimiter
+	volumeLock       *os.File
+	closeOnce        sync.Once
+	closeErr         error
 }
 
 func New(config Config, logger *log.Logger) (*App, error) {
 	config = config.withDefaults()
+	if config.AdminPasswordRequired && config.AdminPassword == "" {
+		return nil, errors.New("XHS_ADMIN_PASSWORD or XHS_ADMIN_PASSWORD_FILE must be configured")
+	}
+	if len(config.AdminUsername) > 64 || strings.ContainsAny(config.AdminUsername, "\r\n") {
+		return nil, errors.New("XHS_ADMIN_USERNAME must be at most 64 characters without line breaks")
+	}
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -41,20 +55,36 @@ func New(config Config, logger *log.Logger) (*App, error) {
 			return nil, err
 		}
 	}
+	volumeLock, err := acquireVolumeLock(config.VolumeDir)
+	if err != nil {
+		return nil, err
+	}
 	records, err := openRecordStore(config.VolumeDir)
 	if err != nil {
-		return nil, fmt.Errorf("open download records: %w", err)
+		return nil, errors.Join(fmt.Errorf("open download records: %w", err), releaseVolumeLock(volumeLock))
 	}
+	store, err := openAppStore(config)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("open application database: %w", err), releaseVolumeLock(volumeLock))
+	}
+	adminFingerprint, adminConfigured := store.secrets.adminCredentialFingerprint(config.AdminUsername, config.AdminPassword)
+	config.AdminPassword = ""
 	clients := newHTTPClientPool(config.RequestTimeout, config.AllowPrivateProxy)
 	app := &App{
-		config:    config,
-		logger:    logger,
-		records:   records,
-		startedAt: time.Now(),
-		clients:   clients,
+		config:           config,
+		logger:           logger,
+		records:          records,
+		store:            store,
+		startedAt:        time.Now(),
+		clients:          clients,
+		volumeLock:       volumeLock,
+		adminFingerprint: adminFingerprint,
+		adminConfigured:  adminConfigured,
+		loginLimiter:     newAdminLoginLimiter(),
 		downloads: newDownloadCoordinator(defaultDownloadConcurrency, downloadLimits{
-			totalTimeout: config.DownloadTimeout,
-			idleTimeout:  config.DownloadIdleTimeout,
+			totalTimeout:  config.DownloadTimeout,
+			idleTimeout:   config.DownloadIdleTimeout,
+			maxMediaBytes: config.MaxMediaBytes,
 		}),
 	}
 	app.clientFactory = clients.Client
@@ -63,10 +93,21 @@ func New(config Config, logger *log.Logger) (*App, error) {
 }
 
 func (a *App) Close() error {
-	if a.clients == nil {
+	if a == nil {
 		return nil
 	}
-	return a.clients.Close()
+	a.closeOnce.Do(func() {
+		var clientErr, storeErr error
+		if a.clients != nil {
+			clientErr = a.clients.Close()
+		}
+		if a.store != nil {
+			storeErr = a.store.Close()
+		}
+		a.closeErr = errors.Join(clientErr, storeErr, releaseVolumeLock(a.volumeLock))
+		a.volumeLock = nil
+	})
+	return a.closeErr
 }
 
 func (a *App) HTTPServer() *http.Server {
@@ -86,10 +127,19 @@ func (a *App) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", a.handleHealth)
 	mux.HandleFunc("/xhs/detail", a.handleDetail)
+	mux.HandleFunc("/api/v1/access", a.handleAccess)
+	mux.HandleFunc("/api/v1/extractions", a.handleExtractionsV1)
+	mux.HandleFunc("/api/admin/v1/auth/session", a.handleAdminSession)
+	mux.HandleFunc("/api/admin/v1/settings", a.handleAdminSettings)
+	mux.HandleFunc("/api/admin/v1/history", a.handleAdminHistory)
+	mux.HandleFunc("/api/admin/v1/works/", a.handleAdminWork)
 	mux.HandleFunc("/openapi.json", a.handleOpenAPI)
 	mux.HandleFunc("/docs", a.handleDocs)
 	mux.HandleFunc("/redoc", func(writer http.ResponseWriter, request *http.Request) {
 		http.Redirect(writer, request, "/docs", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/api/", func(writer http.ResponseWriter, request *http.Request) {
+		writeAPIError(writer, http.StatusNotFound, "NOT_FOUND", "API 路由不存在")
 	})
 	mux.HandleFunc("/", a.handleWeb)
 	return a.logRequests(mux)
@@ -108,6 +158,14 @@ func (a *App) handleHealth(writer http.ResponseWriter, request *http.Request) {
 		methodNotAllowed(writer, http.MethodGet)
 		return
 	}
+	ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
+	defer cancel()
+	if err := a.store.Ping(ctx); err != nil {
+		a.logger.Printf("health database ping: %v", err)
+		writeAPIError(writer, http.StatusServiceUnavailable, "DATABASE_UNAVAILABLE", "服务数据库不可用")
+		return
+	}
+
 	writeJSON(writer, http.StatusOK, map[string]any{
 		"status":         "ok",
 		"service":        "xhs-downloader-api",
@@ -116,93 +174,7 @@ func (a *App) handleHealth(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *App) handleDetail(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		methodNotAllowed(writer, http.MethodPost)
-		return
-	}
-	request.Body = http.MaxBytesReader(writer, request.Body, a.config.MaxBodyBytes)
-	params, err := decodeExtractRequest(request.Body)
-	if err != nil {
-		status := http.StatusUnprocessableEntity
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			status = http.StatusRequestEntityTooLarge
-		}
-		writeJSON(writer, status, map[string]any{
-			"message": "请求参数无效",
-			"detail":  err.Error(),
-		})
-		return
-	}
-
-	client, err := a.clientFactory(params.Proxy)
-	if err != nil {
-		writeJSON(writer, http.StatusUnprocessableEntity, map[string]any{
-			"message": "代理参数无效",
-			"detail":  err.Error(),
-		})
-		return
-	}
-	if params.Proxy != nil {
-		defer client.CloseIdleConnections()
-	}
-	headers := requestHeaders(params.Cookie)
-
-	resolveContext, cancelResolve := context.WithTimeout(request.Context(), a.config.RequestTimeout)
-	resolved, err := resolveLink(resolveContext, params.URL, client, headers)
-	cancelResolve()
-	if err != nil {
-		a.writeExtract(writer, "提取小红书作品链接失败", params, nil)
-		return
-	}
-	if params.Skip && a.records.Has(resolved.NoteID) {
-		a.writeExtract(writer, "获取小红书作品数据成功", params, map[string]any{
-			"message": fmt.Sprintf("作品 %s 存在下载记录，跳过处理", resolved.NoteID),
-		})
-		return
-	}
-
-	fetchContext, cancelFetch := context.WithTimeout(request.Context(), a.config.RequestTimeout)
-	html, err := fetchPage(fetchContext, client, resolved.URL, headers, a.config.MaxUpstreamBody)
-	cancelFetch()
-	if err != nil {
-		a.logger.Printf("fetch %s: %v", resolved.NoteID, err)
-		a.writeExtract(writer, "获取小红书作品数据失败", params, nil)
-		return
-	}
-	note, err := parseInitialState(html, resolved.NoteID)
-	if err != nil {
-		a.logger.Printf("parse %s: %v", resolved.NoteID, err)
-		a.writeExtract(writer, "获取小红书作品数据失败", params, nil)
-		return
-	}
-	data, err := extractWork(note, resolved.URL, resolved.NoteID)
-	if err != nil {
-		a.logger.Printf("extract %s: %v", resolved.NoteID, err)
-		a.writeExtract(writer, "获取小红书作品数据失败", params, nil)
-		return
-	}
-	if params.Download {
-		unlock, lockErr := a.downloads.lockWork(request.Context(), resolved.NoteID)
-		if lockErr != nil {
-			data["下载错误"] = lockErr.Error()
-		} else {
-			defer unlock()
-			if params.Skip && a.records.Has(resolved.NoteID) {
-				a.writeExtract(writer, "获取小红书作品数据成功", params, map[string]any{
-					"message": fmt.Sprintf("作品 %s 存在下载记录，跳过处理", resolved.NoteID),
-				})
-				return
-			}
-			if err := downloadWork(request.Context(), client, a.config.VolumeDir, data, params.Index, a.downloads); err != nil {
-				a.logger.Printf("download %s: %v", resolved.NoteID, err)
-				data["下载错误"] = err.Error()
-			} else if err := a.records.Add(resolved.NoteID); err != nil {
-				a.logger.Printf("record %s: %v", resolved.NoteID, err)
-			}
-		}
-	}
-	a.writeExtract(writer, "获取小红书作品数据成功", params, data)
+	a.handleLegacyExtraction(writer, request)
 }
 
 func (a *App) writeExtract(writer http.ResponseWriter, message string, params ExtractParams, data map[string]any) {

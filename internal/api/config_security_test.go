@@ -17,6 +17,7 @@ func clearRuntimeConfigEnv(t *testing.T) {
 		"XHS_DOWNLOAD_IDLE_TIMEOUT",
 		"XHS_ALLOW_PRIVATE_PROXY",
 		"XHS_MAX_BODY_BYTES",
+		"XHS_MAX_MEDIA_BYTES",
 	} {
 		t.Setenv(name, "")
 	}
@@ -37,6 +38,9 @@ func TestConfigDownloadSecurityDefaults(t *testing.T) {
 	if config.AllowPrivateProxy {
 		t.Fatal("AllowPrivateProxy defaults to true")
 	}
+	if config.MaxMediaBytes != defaultMaxMediaBytes {
+		t.Fatalf("MaxMediaBytes = %d", config.MaxMediaBytes)
+	}
 }
 
 func TestConfigDownloadSecurityEnvironment(t *testing.T) {
@@ -44,6 +48,7 @@ func TestConfigDownloadSecurityEnvironment(t *testing.T) {
 	t.Setenv("XHS_DOWNLOAD_TIMEOUT", "45m")
 	t.Setenv("XHS_DOWNLOAD_IDLE_TIMEOUT", "75s")
 	t.Setenv("XHS_ALLOW_PRIVATE_PROXY", "true")
+	t.Setenv("XHS_MAX_MEDIA_BYTES", "12345")
 
 	config, err := ConfigFromEnv()
 	if err != nil {
@@ -58,6 +63,9 @@ func TestConfigDownloadSecurityEnvironment(t *testing.T) {
 	if !config.AllowPrivateProxy {
 		t.Fatal("AllowPrivateProxy opt-in was ignored")
 	}
+	if config.MaxMediaBytes != 12345 {
+		t.Fatalf("MaxMediaBytes = %d", config.MaxMediaBytes)
+	}
 }
 
 func TestConfigRejectsInvalidDownloadSecurityEnvironment(t *testing.T) {
@@ -70,6 +78,8 @@ func TestConfigRejectsInvalidDownloadSecurityEnvironment(t *testing.T) {
 		{"XHS_DOWNLOAD_IDLE_TIMEOUT", "-1s"},
 		{"XHS_DOWNLOAD_IDLE_TIMEOUT", "invalid"},
 		{"XHS_ALLOW_PRIVATE_PROXY", "sometimes"},
+		{"XHS_MAX_MEDIA_BYTES", "0"},
+		{"XHS_MAX_MEDIA_BYTES", "invalid"},
 	}
 	for _, test := range tests {
 		t.Run(test.name+"="+test.value, func(t *testing.T) {
@@ -93,5 +103,8 @@ func TestHTTPServerDisablesWholeHandlerWriteTimeout(t *testing.T) {
 	}
 	if app.downloads.idleTimeout != defaultDownloadIdle {
 		t.Fatalf("download idle timeout = %s", app.downloads.idleTimeout)
+	}
+	if app.downloads.maxMediaBytes != defaultMaxMediaBytes {
+		t.Fatalf("max media bytes = %d", app.downloads.maxMediaBytes)
 	}
 }

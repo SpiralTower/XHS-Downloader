@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,20 +19,32 @@ const (
 	defaultDownloadIdle    = 60 * time.Second
 	defaultMaxBodyBytes    = int64(1 << 20)
 	defaultMaxUpstreamBody = int64(16 << 20)
+	defaultMaxMediaBytes   = int64(2 << 30)
+	defaultAdminUsername   = "admin"
+	defaultAdminSessionTTL = 12 * time.Hour
 )
 
 // Config contains the runtime settings for the core API server.
 type Config struct {
-	Host                string
-	Port                int
-	VolumeDir           string
-	WebDistDir          string
-	RequestTimeout      time.Duration
-	DownloadTimeout     time.Duration
-	DownloadIdleTimeout time.Duration
-	AllowPrivateProxy   bool
-	MaxBodyBytes        int64
-	MaxUpstreamBody     int64
+	Host                  string
+	Port                  int
+	VolumeDir             string
+	WebDistDir            string
+	RequestTimeout        time.Duration
+	DownloadTimeout       time.Duration
+	DownloadIdleTimeout   time.Duration
+	AllowPrivateProxy     bool
+	MaxBodyBytes          int64
+	MaxUpstreamBody       int64
+	MaxMediaBytes         int64
+	DatabasePath          string
+	SecretKeyPath         string
+	SecretKeyManaged      bool
+	AdminUsername         string
+	AdminPassword         string
+	AdminPasswordRequired bool
+	AdminSessionTTL       time.Duration
+	SessionCookieSecure   bool
 }
 
 // ConfigFromEnv loads server configuration from environment variables.
@@ -46,7 +59,20 @@ func ConfigFromEnv() (Config, error) {
 		DownloadIdleTimeout: defaultDownloadIdle,
 		MaxBodyBytes:        defaultMaxBodyBytes,
 		MaxUpstreamBody:     defaultMaxUpstreamBody,
+		MaxMediaBytes:       defaultMaxMediaBytes,
+		AdminUsername:       envOrDefault("XHS_ADMIN_USERNAME", defaultAdminUsername),
+		AdminSessionTTL:     defaultAdminSessionTTL,
 	}
+	cfg.DatabasePath = strings.TrimSpace(os.Getenv("XHS_DATABASE_PATH"))
+	cfg.SecretKeyPath = strings.TrimSpace(os.Getenv("XHS_SECRET_KEY_PATH"))
+	cfg.SecretKeyManaged = cfg.SecretKeyPath == ""
+
+	password, err := adminPasswordFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.AdminPassword = password
+	cfg.AdminPasswordRequired = true
 
 	if value := strings.TrimSpace(os.Getenv("PORT")); value != "" {
 		port, err := strconv.Atoi(value)
@@ -90,6 +116,27 @@ func ConfigFromEnv() (Config, error) {
 		}
 		cfg.MaxBodyBytes = limit
 	}
+	if value := strings.TrimSpace(os.Getenv("XHS_MAX_MEDIA_BYTES")); value != "" {
+		limit, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || limit < 1 {
+			return Config{}, fmt.Errorf("invalid XHS_MAX_MEDIA_BYTES %q", value)
+		}
+		cfg.MaxMediaBytes = limit
+	}
+	if value := strings.TrimSpace(os.Getenv("XHS_ADMIN_SESSION_TTL")); value != "" {
+		ttl, err := time.ParseDuration(value)
+		if err != nil || ttl <= 0 {
+			return Config{}, fmt.Errorf("invalid XHS_ADMIN_SESSION_TTL %q", value)
+		}
+		cfg.AdminSessionTTL = ttl
+	}
+	if value := strings.TrimSpace(os.Getenv("XHS_SESSION_COOKIE_SECURE")); value != "" {
+		secure, err := strconv.ParseBool(value)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid XHS_SESSION_COOKIE_SECURE %q", value)
+		}
+		cfg.SessionCookieSecure = secure
+	}
 
 	return cfg.withDefaults(), nil
 }
@@ -122,6 +169,22 @@ func (c Config) withDefaults() Config {
 	if c.MaxUpstreamBody <= 0 {
 		c.MaxUpstreamBody = defaultMaxUpstreamBody
 	}
+	if c.MaxMediaBytes <= 0 {
+		c.MaxMediaBytes = defaultMaxMediaBytes
+	}
+	if strings.TrimSpace(c.DatabasePath) == "" {
+		c.DatabasePath = filepath.Join(c.VolumeDir, "Data", "xhs.sqlite3")
+	}
+	if strings.TrimSpace(c.SecretKeyPath) == "" {
+		c.SecretKeyPath = filepath.Join(filepath.Dir(c.DatabasePath), "secrets.key")
+		c.SecretKeyManaged = true
+	}
+	if strings.TrimSpace(c.AdminUsername) == "" {
+		c.AdminUsername = defaultAdminUsername
+	}
+	if c.AdminSessionTTL <= 0 {
+		c.AdminSessionTTL = defaultAdminSessionTTL
+	}
 	return c
 }
 
@@ -134,4 +197,15 @@ func envOrDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func adminPasswordFromEnv() (string, error) {
+	if path := strings.TrimSpace(os.Getenv("XHS_ADMIN_PASSWORD_FILE")); path != "" {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read XHS_ADMIN_PASSWORD_FILE: %w", err)
+		}
+		return strings.TrimSuffix(strings.TrimSuffix(string(content), "\n"), "\r"), nil
+	}
+	return os.Getenv("XHS_ADMIN_PASSWORD"), nil
 }
