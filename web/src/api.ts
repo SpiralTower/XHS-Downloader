@@ -1,18 +1,35 @@
 import type {
-  ExtractParams,
-  ExtractResponse,
+  AccessSnapshot,
+  AdminSession,
+  AdminSettings,
+  AdminSettingsUpdate,
+  ExtractionRequest,
+  ExtractionResource,
+  ExtractionResponse,
+  HealthSnapshot,
+  HistoryPage,
   MediaItem,
   WorkData,
+  WorkHistory,
   WorkViewModel,
 } from "./types";
 
 export class ApiError extends Error {
   readonly status: number | null;
+  readonly code: string;
+  readonly fieldErrors: Record<string, string>;
 
-  constructor(message: string, status: number | null = null) {
+  constructor(
+    message: string,
+    status: number | null = null,
+    code = "",
+    fieldErrors: Record<string, string> = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -21,12 +38,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readBody(response: Response): Promise<unknown> {
+  if (response.status === 204) return null;
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     return response.json();
   }
-  const text = await response.text();
-  return text || null;
+  const body = await response.text();
+  return body || null;
 }
 
 function responseMessage(body: unknown, fallback: string): string {
@@ -38,36 +56,34 @@ function responseMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function checkHealth(signal?: AbortSignal): Promise<number> {
-  const startedAt = performance.now();
-  const response = await fetch("/healthz", {
-    method: "GET",
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-    signal,
-  });
-  const body = await readBody(response);
-  if (!response.ok) {
-    throw new ApiError(responseMessage(body, "API 健康检查失败"), response.status);
-  }
-  if (!isRecord(body) || body.status !== "ok") {
-    throw new ApiError("API 返回了非预期的健康状态", response.status);
-  }
-  return Math.max(1, Math.round(performance.now() - startedAt));
+function responseCode(body: unknown): string {
+  return isRecord(body) && typeof body.code === "string" ? body.code : "";
 }
 
-export async function extractDetail(
-  params: ExtractParams,
-  signal?: AbortSignal,
-): Promise<ExtractResponse> {
-  const response = await fetch("/xhs/detail", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(params),
-    signal,
+function responseFieldErrors(body: unknown): Record<string, string> {
+  if (!isRecord(body) || !isRecord(body.field_errors)) return {};
+  return Object.fromEntries(
+    Object.entries(body.field_errors).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
+async function requestJSON<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(path, {
+    ...init,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers,
   });
   const body = await readBody(response);
 
@@ -75,66 +91,106 @@ export async function extractDetail(
     throw new ApiError(
       responseMessage(body, `请求失败（HTTP ${response.status}）`),
       response.status,
+      responseCode(body),
+      responseFieldErrors(body),
     );
   }
-  if (!isRecord(body) || typeof body.message !== "string") {
-    throw new ApiError("API 返回格式无效", response.status);
+  return body as T;
+}
+
+export async function checkHealth(signal?: AbortSignal): Promise<number> {
+  const startedAt = performance.now();
+  const body = await requestJSON<unknown>("/healthz", {
+    method: "GET",
+    signal,
+  });
+  if (!isRecord(body) || body.status !== "ok") {
+    throw new ApiError("API 返回了非预期的健康状态");
   }
-
-  return {
-    message: body.message,
-    params: isRecord(body.params)
-      ? (body.params as unknown as ExtractParams)
-      : params,
-    data: isRecord(body.data) ? (body.data as WorkData) : null,
-  };
+  return Math.max(1, Math.round(performance.now() - startedAt));
 }
 
-export function parseIndexes(value: string): number[] | null {
-  const source = value.trim();
-  if (!source) return null;
-
-  const result = new Set<number>();
-  const tokens = source.replaceAll("，", ",").split(/[\s,]+/).filter(Boolean);
-
-  for (const token of tokens) {
-    const range = token.match(/^(\d+)-(\d+)$/);
-    if (range) {
-      const start = Number(range[1]);
-      const end = Number(range[2]);
-      if (
-        !Number.isSafeInteger(start) ||
-        !Number.isSafeInteger(end) ||
-        start < 1 ||
-        end < start ||
-        end - start > 99
-      ) {
-        throw new Error(`图片范围“${token}”无效`);
-      }
-      for (let index = start; index <= end; index += 1) result.add(index);
-      continue;
-    }
-
-    if (!/^\d+$/.test(token)) throw new Error(`图片序号“${token}”无效`);
-    const index = Number(token);
-    if (!Number.isSafeInteger(index) || index < 1) {
-      throw new Error("图片序号必须是大于 0 的整数");
-    }
-    result.add(index);
-  }
-
-  return [...result].sort((a, b) => a - b);
+export function getAccess(signal?: AbortSignal): Promise<AccessSnapshot> {
+  return requestJSON("/api/v1/access", { method: "GET", signal });
 }
 
-export function getSkipMessage(response: ExtractResponse): string | null {
-  if (!response.params.skip || !response.data) return null;
-  const message = text(response.data.message);
-  const keys = Object.keys(response.data);
-  return message && keys.every((key) => key === "message") ? message : null;
+export function getAdminSession(signal?: AbortSignal): Promise<AdminSession> {
+  return requestJSON("/api/admin/v1/auth/session", {
+    method: "GET",
+    signal,
+  });
 }
 
-export function getDownloadError(data: WorkData): string {
-  return text(data.下载错误);
+export function loginAdmin(
+  credentials: { username: string; password: string },
+  signal?: AbortSignal,
+): Promise<AdminSession> {
+  return requestJSON("/api/admin/v1/auth/session", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+    signal,
+  });
+}
+
+export function logoutAdmin(signal?: AbortSignal): Promise<void> {
+  return requestJSON("/api/admin/v1/auth/session", {
+    method: "DELETE",
+    signal,
+  });
+}
+
+export function extractDetail(
+  params: ExtractionRequest,
+  signal?: AbortSignal,
+): Promise<ExtractionResponse> {
+  return requestJSON("/api/v1/extractions", {
+    method: "POST",
+    body: JSON.stringify(params),
+    signal,
+  });
+}
+
+export function getAdminSettings(
+  signal?: AbortSignal,
+): Promise<AdminSettings> {
+  return requestJSON("/api/admin/v1/settings", {
+    method: "GET",
+    signal,
+  });
+}
+
+export function updateAdminSettings(
+  update: AdminSettingsUpdate,
+  signal?: AbortSignal,
+): Promise<AdminSettings> {
+  return requestJSON("/api/admin/v1/settings", {
+    method: "PATCH",
+    body: JSON.stringify(update),
+    signal,
+  });
+}
+
+export function getHistory(
+  cursor: string | null,
+  limit = 25,
+  signal?: AbortSignal,
+): Promise<HistoryPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return requestJSON(`/api/admin/v1/history?${params}`, {
+    method: "GET",
+    signal,
+  });
+}
+
+export function getWorkHistory(
+  workID: string | number,
+  signal?: AbortSignal,
+): Promise<WorkHistory> {
+  return requestJSON(
+    `/api/admin/v1/works/${encodeURIComponent(String(workID))}`,
+    { method: "GET", signal },
+  );
 }
 
 function text(value: unknown, fallback = ""): string {
@@ -186,14 +242,32 @@ function mediaKind(url: string, type: string, isLive: boolean): MediaItem["kind"
   return "image";
 }
 
-export function toWorkView(data: WorkData): WorkViewModel {
+function resourceMedia(resource: ExtractionResource): MediaItem | null {
+  const url = httpUrl(resource.remote_url);
+  if (!url || resource.kind === "text") return null;
+  return {
+    url,
+    kind: resource.kind === "image" ? "image" : "video",
+    label:
+      resource.kind === "image"
+        ? `图片 ${resource.ordinal}`
+        : `视频 ${resource.ordinal}`,
+    isLive: false,
+    saveStatus: resource.save_status,
+  };
+}
+
+export function toWorkView(
+  data: WorkData,
+  resources: ExtractionResource[] = [],
+): WorkViewModel {
   const type = text(data.作品类型, "未知类型");
   const downloadUrls = urlList(data.下载地址);
   const liveUrls = Array.isArray(data.动图地址)
     ? data.动图地址.map(httpUrl).filter(Boolean)
     : [];
 
-  const media: MediaItem[] = [
+  const fromData: MediaItem[] = [
     ...downloadUrls.map((url, index) => ({
       url,
       kind: mediaKind(url, type, false),
@@ -208,6 +282,22 @@ export function toWorkView(data: WorkData): WorkViewModel {
     } satisfies MediaItem)),
   ];
 
+  const media = [...fromData];
+  const mediaByURL = new Map(media.map((item) => [item.url, item]));
+  for (const resource of resources) {
+    const item = resourceMedia(resource);
+    if (!item) continue;
+
+    const existing = mediaByURL.get(item.url);
+    if (existing) {
+      existing.saveStatus = item.saveStatus;
+      continue;
+    }
+
+    mediaByURL.set(item.url, item);
+    media.push(item);
+  }
+
   return {
     id: text(data.作品ID, "未知 ID"),
     title: text(data.作品标题, "未命名作品"),
@@ -219,7 +309,7 @@ export function toWorkView(data: WorkData): WorkViewModel {
     authorUrl: httpUrl(data.作者链接),
     publishedAt: text(data.发布时间, "未知").replace("_", " "),
     updatedAt: text(data.最后更新时间, "未知").replace("_", " "),
-    downloadError: getDownloadError(data),
+    downloadError: text(data.下载错误),
     tags: list(data.作品标签).map((tag) => tag.replace(/^#/, "")),
     metrics: {
       liked: displayMetric(data.点赞数量),
@@ -229,4 +319,18 @@ export function toWorkView(data: WorkData): WorkViewModel {
     },
     media,
   };
+}
+
+export function formatDateTime(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+export function emptyHealthSnapshot(): HealthSnapshot {
+  return { state: "checking", latency: null, checkedAt: null };
 }

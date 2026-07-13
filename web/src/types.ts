@@ -1,10 +1,144 @@
-export interface ExtractParams {
+export interface AccessSnapshot {
+  public: boolean;
+  authenticated: boolean;
+  can_extract: boolean;
+}
+
+export interface AdminSession {
+  authenticated: boolean;
+  username?: string;
+  expires_at?: string;
+}
+
+export interface ConnectionOverrides {
+  cookie?: string;
+  proxy?: string;
+}
+
+export interface ExtractionRequest {
   url: string;
-  download: boolean;
-  index: Array<number | string> | null;
-  cookie: string | null;
-  proxy: string | null;
-  skip: boolean;
+  connection?: ConnectionOverrides;
+}
+
+export type ConnectionSource = "default" | "override" | "disabled" | "none";
+export type ExtractionSource = "fetched" | "cache";
+export type HistorySource = ExtractionSource | "skipped" | "";
+export type ResourceKind = "text" | "image" | "video";
+export type SaveStatus = "disabled" | "pending" | "saved" | "failed";
+
+export interface ExtractionResource {
+  id: number;
+  kind: ResourceKind;
+  ordinal: number;
+  remote_url: string;
+  save_status: SaveStatus;
+  save_error?: string;
+  mime_type?: string;
+  size_bytes?: number;
+  sha256?: string;
+}
+
+export interface ExtractionVersion {
+  id: number;
+  number: number;
+  captured_at: string;
+  resources: ExtractionResource[];
+}
+
+export interface WorkReference {
+  id: number;
+  platform_id: string;
+}
+
+export interface ExtractionResponse {
+  run_id: number;
+  source: ExtractionSource;
+  message: string;
+  connection: {
+    cookie_source: ConnectionSource;
+    proxy_source: ConnectionSource;
+  };
+  work: WorkReference;
+  version: ExtractionVersion;
+  data: WorkData;
+}
+
+export interface PublicExtractFormValues {
+  url: string;
+  cookie: string;
+  proxy: string;
+}
+
+export interface SaveSettings {
+  text: boolean;
+  images: boolean;
+  videos: boolean;
+}
+
+export interface SecretSummary {
+  configured: boolean;
+  display?: string;
+}
+
+export interface AdminSettings {
+  revision: number;
+  public: boolean;
+  save: SaveSettings;
+  refetch: boolean;
+  default_cookie: SecretSummary;
+  default_proxy: SecretSummary;
+}
+
+export type SecretAction = "keep" | "replace" | "clear";
+
+export interface SecretUpdate {
+  action: SecretAction;
+  value?: string;
+}
+
+export interface AdminSettingsUpdate {
+  revision: number;
+  public?: boolean;
+  save?: Partial<SaveSettings>;
+  refetch?: boolean;
+  default_cookie?: SecretUpdate;
+  default_proxy?: SecretUpdate;
+}
+
+export type HistoryStatus = "running" | "succeeded" | "failed";
+
+export interface HistoryItem {
+  run_id: number;
+  requested_url: string;
+  status: HistoryStatus;
+  source: HistorySource;
+  started_at: string;
+  finished_at?: string;
+  work?: WorkReference;
+  version?: {
+    id: number;
+    number: number;
+  };
+  error?: string;
+}
+
+export interface HistoryPage {
+  items: HistoryItem[];
+  next_cursor: string | null;
+}
+
+export interface StoredWork extends WorkReference {
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+export interface StoredVersion extends ExtractionVersion {
+  data: WorkData;
+}
+
+export interface WorkHistory {
+  work: StoredWork;
+  versions: StoredVersion[];
 }
 
 export interface WorkData extends Record<string, unknown> {
@@ -30,28 +164,7 @@ export interface WorkData extends Record<string, unknown> {
   下载错误?: string;
 }
 
-export interface ExtractResponse {
-  message: string;
-  params: ExtractParams;
-  data: WorkData | null;
-}
-
-export interface FormValues {
-  url: string;
-  download: boolean;
-  indexes: string;
-  cookie: string;
-  proxy: string;
-  skip: boolean;
-}
-
-export type RequestState =
-  | "idle"
-  | "loading"
-  | "success"
-  | "warning"
-  | "skipped"
-  | "error";
+export type RequestState = "idle" | "loading" | "success" | "warning" | "error";
 
 export type HealthState = "checking" | "online" | "offline";
 
@@ -66,6 +179,7 @@ export interface MediaItem {
   kind: "image" | "video";
   label: string;
   isLive: boolean;
+  saveStatus?: SaveStatus;
 }
 
 export interface WorkViewModel {

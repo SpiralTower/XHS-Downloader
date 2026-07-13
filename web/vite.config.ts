@@ -10,6 +10,15 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
+      "/api": {
+        target: apiTarget,
+        changeOrigin: true,
+        configure(proxy) {
+          proxy.on("proxyReq", (proxyRequest) => {
+            proxyRequest.setHeader("Origin", apiTarget);
+          });
+        },
+      },
       "/xhs": {
         target: apiTarget,
         changeOrigin: true,

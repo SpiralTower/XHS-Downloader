@@ -10,28 +10,32 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  background: #f5f6f8;
+  --accent: oklch(0.62 0.235 18.5);
+  --accent-foreground: var(--snow);
+  --app-glow-primary: oklch(0.68 0.2 18.5 / 0.12);
+  --app-glow-secondary: oklch(0.64 0.16 270 / 0.1);
 }
 
-:root.dark {
+:root.dark,
+[data-theme="dark"] {
   color-scheme: dark;
-  background: #090b10;
+  --accent: oklch(0.72 0.19 18.5);
+  --accent-foreground: var(--eclipse);
+  --app-glow-primary: oklch(0.68 0.2 18.5 / 0.16);
+  --app-glow-secondary: oklch(0.7 0.15 270 / 0.13);
 }
 
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #f5f6f8;
-}
-
-html.dark {
-  background: #090b10;
+  background: var(--background);
 }
 
 body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+  background: var(--background);
 }
 
 button,
@@ -41,55 +45,49 @@ textarea {
 }
 
 ::selection {
-  background: rgb(244 63 94 / 20%);
+  color: var(--foreground);
+  background: var(--accent-soft);
 }
 
 .app-shell {
   background:
-    radial-gradient(circle at 8% 0%, rgb(244 63 94 / 9%), transparent 28rem),
-    radial-gradient(circle at 94% 12%, rgb(99 102 241 / 9%), transparent 24rem),
-    #f5f6f8;
-}
-
-.dark .app-shell {
-  background:
-    radial-gradient(circle at 8% 0%, rgb(244 63 94 / 13%), transparent 28rem),
-    radial-gradient(circle at 94% 12%, rgb(99 102 241 / 12%), transparent 24rem),
-    #090b10;
+    radial-gradient(circle at 8% 0%, var(--app-glow-primary), transparent 28rem),
+    radial-gradient(circle at 94% 12%, var(--app-glow-secondary), transparent 24rem),
+    var(--background);
 }
 
 .surface-grid {
   background-image:
-    linear-gradient(rgb(15 23 42 / 2.8%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(15 23 42 / 2.8%) 1px, transparent 1px);
+    linear-gradient(
+      color-mix(in oklab, var(--foreground) 3%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--foreground) 3%, transparent) 1px,
+      transparent 1px
+    );
   background-size: 28px 28px;
   mask-image: linear-gradient(to bottom, black, transparent 75%);
 }
 
-.dark .surface-grid {
-  background-image:
-    linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px);
-}
-
 .glass-panel {
-  background: rgb(255 255 255 / 82%);
+  background: color-mix(in oklab, var(--surface) 88%, transparent);
   box-shadow:
-    0 1px 2px rgb(15 23 42 / 4%),
-    0 18px 48px rgb(15 23 42 / 6%);
+    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent),
+    0 18px 48px color-mix(in oklab, var(--foreground) 7%, transparent);
   backdrop-filter: blur(20px);
 }
 
-.dark .glass-panel {
-  background: rgb(17 20 27 / 80%);
+[data-theme="dark"] .glass-panel {
   box-shadow:
-    0 1px 2px rgb(0 0 0 / 35%),
-    0 20px 60px rgb(0 0 0 / 28%);
+    0 1px 2px color-mix(in oklab, var(--black) 38%, transparent),
+    0 20px 60px color-mix(in oklab, var(--black) 28%, transparent);
 }
 
 .media-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgb(148 163 184 / 55%) transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 
 .text-balance {
