@@ -12,8 +12,8 @@
   text-rendering: optimizeLegibility;
   --accent: oklch(0.62 0.235 18.5);
   --accent-foreground: var(--snow);
-  --app-glow-primary: oklch(0.68 0.2 18.5 / 0.12);
-  --app-glow-secondary: oklch(0.64 0.16 270 / 0.1);
+  --app-glow-primary: oklch(0.68 0.2 18.5 / 0.1);
+  --app-glow-secondary: oklch(0.64 0.16 270 / 0.08);
 }
 
 :root.dark,
@@ -21,8 +21,8 @@
   color-scheme: dark;
   --accent: oklch(0.72 0.19 18.5);
   --accent-foreground: var(--eclipse);
-  --app-glow-primary: oklch(0.68 0.2 18.5 / 0.16);
-  --app-glow-secondary: oklch(0.7 0.15 270 / 0.13);
+  --app-glow-primary: oklch(0.68 0.2 18.5 / 0.14);
+  --app-glow-secondary: oklch(0.7 0.15 270 / 0.1);
 }
 
 html {
@@ -51,38 +51,39 @@ textarea {
 
 .app-shell {
   background:
-    radial-gradient(circle at 8% 0%, var(--app-glow-primary), transparent 28rem),
-    radial-gradient(circle at 94% 12%, var(--app-glow-secondary), transparent 24rem),
+    radial-gradient(circle at 12% 0%, var(--app-glow-primary), transparent 32rem),
+    radial-gradient(circle at 90% 8%, var(--app-glow-secondary), transparent 28rem),
     var(--background);
 }
 
 .surface-grid {
   background-image:
     linear-gradient(
-      color-mix(in oklab, var(--foreground) 3%, transparent) 1px,
+      color-mix(in oklab, var(--foreground) 2.5%, transparent) 1px,
       transparent 1px
     ),
     linear-gradient(
       90deg,
-      color-mix(in oklab, var(--foreground) 3%, transparent) 1px,
+      color-mix(in oklab, var(--foreground) 2.5%, transparent) 1px,
       transparent 1px
     );
-  background-size: 28px 28px;
-  mask-image: linear-gradient(to bottom, black, transparent 75%);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, black, transparent 70%);
+  opacity: 0.7;
 }
 
 .glass-panel {
-  background: color-mix(in oklab, var(--surface) 88%, transparent);
+  background: color-mix(in oklab, var(--surface) 90%, transparent);
   box-shadow:
-    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent),
-    0 18px 48px color-mix(in oklab, var(--foreground) 7%, transparent);
+    0 1px 2px color-mix(in oklab, var(--foreground) 4%, transparent),
+    0 12px 40px color-mix(in oklab, var(--foreground) 5%, transparent);
   backdrop-filter: blur(20px);
 }
 
 [data-theme="dark"] .glass-panel {
   box-shadow:
-    0 1px 2px color-mix(in oklab, var(--black) 38%, transparent),
-    0 20px 60px color-mix(in oklab, var(--black) 28%, transparent);
+    0 1px 2px color-mix(in oklab, var(--black) 30%, transparent),
+    0 16px 48px color-mix(in oklab, var(--black) 22%, transparent);
 }
 
 .media-scroll {
@@ -92,6 +93,111 @@ textarea {
 
 .text-balance {
   text-wrap: balance;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.45s ease-out both;
+}
+
+/* Search-engine style pill bar */
+.search-engine-bar.input-group {
+  overflow: hidden;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--foreground) 4%, transparent),
+    0 12px 32px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.search-engine-bar.input-group:hover:not(:focus-within) {
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+}
+
+.search-engine-bar.input-group:has([data-slot="input-group-input"]:focus) {
+  background: color-mix(in oklab, var(--surface) 98%, transparent);
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent),
+    0 16px 40px color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+.search-engine-bar .input-group__input {
+  min-height: 2.75rem;
+}
+
+/* Search submit: icon-only by default, expand to icon + label on hover/focus */
+.search-submit-btn.button {
+  gap: 0;
+  overflow: hidden;
+  width: 2rem;
+  min-width: 2rem;
+  padding-inline: 0;
+  justify-content: center;
+  transition:
+    width 220ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
+    min-width 220ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
+    padding 220ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
+    gap 220ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
+    transform 250ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
+    background-color 100ms var(--ease-out, ease-out),
+    box-shadow 100ms var(--ease-out, ease-out);
+}
+
+.search-submit-btn .search-submit-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    max-width 220ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
+    opacity 160ms var(--ease-out, ease-out);
+}
+
+@media (hover: hover) {
+  .search-submit-btn.button:hover,
+  .search-submit-btn.button[data-hovered="true"] {
+    gap: 0.375rem;
+    width: auto;
+    min-width: 4.75rem;
+    padding-inline: 0.75rem;
+  }
+
+  .search-submit-btn.button:hover .search-submit-label,
+  .search-submit-btn.button[data-hovered="true"] .search-submit-label {
+    max-width: 3rem;
+    opacity: 1;
+  }
+}
+
+.search-submit-btn.button:focus-visible,
+.search-submit-btn.button[data-focus-visible="true"] {
+  gap: 0.375rem;
+  width: auto;
+  min-width: 4.75rem;
+  padding-inline: 0.75rem;
+}
+
+.search-submit-btn.button:focus-visible .search-submit-label,
+.search-submit-btn.button[data-focus-visible="true"] .search-submit-label {
+  max-width: 3rem;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-submit-btn.button,
+  .search-submit-btn .search-submit-label {
+    transition: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

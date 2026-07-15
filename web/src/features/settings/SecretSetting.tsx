@@ -33,14 +33,14 @@ export default function SecretSetting({
   value: string;
 }) {
   return (
-    <div className="grid gap-3 rounded-2xl border border-border bg-surface-secondary p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+    <div className="grid gap-3 rounded-2xl border border-border bg-surface-secondary p-3.5">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="font-medium">{label}</p>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-0.5 truncate text-sm text-muted">
             {summary.configured
-              ? summary.display || "已配置（值不会返回浏览器）"
-              : "尚未配置"}
+              ? summary.display || "已配置"
+              : "未配置"}
           </p>
         </div>
         <div
@@ -89,7 +89,7 @@ export default function SecretSetting({
           onChange={onValueChange}
           value={value}
         >
-          <Label>新的{label}</Label>
+          <Label>新值</Label>
           <Input
             autoCapitalize="none"
             autoComplete="off"
@@ -107,10 +107,7 @@ export default function SecretSetting({
             <ShieldIcon className="size-5" />
           </Alert.Indicator>
           <Alert.Content>
-            <Alert.Title>保存后将清除{label}</Alert.Title>
-            <Alert.Description>
-              后续请求不会再继承这项默认连接配置。
-            </Alert.Description>
+            <Alert.Description>保存后清除{label}</Alert.Description>
           </Alert.Content>
         </Alert>
       )}

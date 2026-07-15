@@ -15,7 +15,6 @@ import { useNavigate } from "react-router";
 
 import { ApiError, formatDateTime, getHistory } from "../api";
 import {
-  ClockIcon,
   EyeIcon,
   RefreshIcon,
   SearchIcon,
@@ -124,10 +123,7 @@ export default function AdminHistoryPage() {
         </div>
       </Table.Cell>
       <Table.Cell>
-        <span
-          className="block max-w-80 truncate"
-          title={item.requested_url}
-        >
+        <span className="block max-w-80 truncate" title={item.requested_url}>
           {item.requested_url}
         </span>
       </Table.Cell>
@@ -142,9 +138,9 @@ export default function AdminHistoryPage() {
             {item.source === "cache"
               ? "缓存"
               : item.source === "fetched"
-                ? "重新抓取"
+                ? "抓取"
                 : item.source === "skipped"
-                  ? "旧版跳过"
+                  ? "跳过"
                   : "待处理"}
           </Chip.Label>
         </Chip>
@@ -154,7 +150,7 @@ export default function AdminHistoryPage() {
           <div className="grid gap-0.5">
             <span>{item.work.platform_id}</span>
             <span className="text-xs text-muted">
-              {item.version ? `版本 v${item.version.number}` : "未生成版本"}
+              {item.version ? `v${item.version.number}` : "—"}
             </span>
           </div>
         ) : (
@@ -165,8 +161,8 @@ export default function AdminHistoryPage() {
         <Button
           aria-label={
             item.work
-              ? `查看作品 ${item.work.platform_id} 的版本历史`
-              : `记录 ${item.run_id} 尚无作品详情`
+              ? `查看作品 ${item.work.platform_id}`
+              : `记录 ${item.run_id} 无作品`
           }
           isDisabled={!item.work}
           isIconOnly
@@ -183,23 +179,19 @@ export default function AdminHistoryPage() {
   );
 
   return (
-    <div className="grid gap-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1
-            className="text-3xl font-bold tracking-[-0.035em] outline-none"
-            id="main-heading"
-            tabIndex={-1}
-          >
-            解析历史
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            每次请求都保留独立 run，并关联作品及当时使用的内容版本。
-          </p>
-        </div>
+    <div className="grid gap-5">
+      <header className="flex items-end justify-between gap-3">
+        <h1
+          className="text-2xl font-semibold tracking-[-0.03em] outline-none sm:text-3xl"
+          id="main-heading"
+          tabIndex={-1}
+        >
+          解析历史
+        </h1>
         <Button
           isDisabled={isLoading}
           onPress={() => setReloadKey((current) => current + 1)}
+          size="sm"
           variant="secondary"
         >
           <RefreshIcon className="size-4" />
@@ -213,50 +205,37 @@ export default function AdminHistoryPage() {
             <XIcon className="size-5" />
           </Alert.Indicator>
           <Alert.Content>
-            <Alert.Title>无法读取历史记录</Alert.Title>
             <Alert.Description>{error}</Alert.Description>
           </Alert.Content>
         </Alert>
       )}
 
       <Card className="glass-panel min-w-0 border border-border">
-        <Card.Header className="flex-col items-stretch gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <Card.Title>请求记录</Card.Title>
-            <Card.Description>
-              当前筛选仅作用于本页；服务端按最新 run 倒序返回。
-            </Card.Description>
-          </div>
+        <Card.Header className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Card.Title>请求记录</Card.Title>
           <TextField
-            className="w-full sm:max-w-sm"
+            className="w-full sm:max-w-xs"
             isDisabled={!page}
             name="history_filter"
             onChange={setFilter}
             value={filter}
           >
-            <Label>筛选当前页</Label>
-            <Input placeholder="链接、作品 ID、状态或 run ID" />
+            <Label className="sr-only">筛选</Label>
+            <Input placeholder="筛选本页…" />
           </TextField>
         </Card.Header>
 
         <Card.Content className="min-w-0">
           {isLoading && !page ? (
-            <div className="grid min-h-64 place-items-center text-center">
-              <div role="status">
-                <Spinner color="accent" size="lg" />
-                <p className="mt-4 font-medium">正在读取解析历史…</p>
-              </div>
+            <div className="grid min-h-56 place-items-center">
+              <Spinner color="accent" size="lg" />
             </div>
           ) : !page ? (
-            <div className="grid min-h-64 place-items-center px-4 py-10 text-center">
-              <div className="max-w-md">
-                <XIcon className="mx-auto size-7 text-danger" />
-                <h2 className="mt-4 text-lg font-semibold">历史记录尚未载入</h2>
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  本次请求失败，当前状态不代表历史记录为空。请重新载入后再查看。
-                </p>
+            <div className="grid min-h-56 place-items-center px-4 py-10 text-center">
+              <div className="max-w-sm">
+                <p className="font-medium">历史未载入</p>
                 <Button
-                  className="mt-5"
+                  className="mt-4"
                   onPress={() => setReloadKey((current) => current + 1)}
                   variant="secondary"
                 >
@@ -274,29 +253,25 @@ export default function AdminHistoryPage() {
                 >
                   <Table.Header>
                     <Table.Column isRowHeader>记录</Table.Column>
-                    <Table.Column>提交链接</Table.Column>
+                    <Table.Column>链接</Table.Column>
                     <Table.Column>状态</Table.Column>
                     <Table.Column>来源</Table.Column>
-                    <Table.Column>作品 / 版本</Table.Column>
+                    <Table.Column>作品</Table.Column>
                     <Table.Column>详情</Table.Column>
                   </Table.Header>
                   <Table.Body
                     renderEmptyState={() => (
-                      <div className="grid min-h-48 place-items-center px-4 py-10 text-center">
+                      <div className="grid min-h-40 place-items-center px-4 py-10 text-center">
                         <div>
                           <SearchIcon className="mx-auto size-6 text-muted" />
-                          <p className="mt-3 font-semibold">
-                            {filter ? "本页没有匹配记录" : "还没有解析记录"}
-                          </p>
-                          <p className="mt-1 text-sm text-muted">
-                            {filter
-                              ? "清除筛选词后查看本页全部记录。"
-                              : "用户端完成第一次解析后，记录会显示在这里。"}
+                          <p className="mt-3 font-medium">
+                            {filter ? "无匹配记录" : "暂无记录"}
                           </p>
                           {filter && (
                             <Button
-                              className="mt-4"
+                              className="mt-3"
                               onPress={() => setFilter("")}
+                              size="sm"
                               variant="secondary"
                             >
                               清除筛选
@@ -313,7 +288,7 @@ export default function AdminHistoryPage() {
               <Table.Footer>
                 <Pagination className="w-full" size="sm">
                   <Pagination.Summary>
-                    第 {cursorStack.length + 1} 页 · 本页 {filteredItems.length} 条
+                    第 {cursorStack.length + 1} 页 · {filteredItems.length} 条
                   </Pagination.Summary>
                   <Pagination.Content>
                     <Pagination.Item>
@@ -346,11 +321,6 @@ export default function AdminHistoryPage() {
           )}
         </Card.Content>
       </Card>
-
-      <p className="flex items-center gap-2 text-xs text-muted">
-        <ClockIcon className="size-4" />
-        时间按浏览器所在时区显示；历史数据由 SQLite 持久化。
-      </p>
     </div>
   );
 }

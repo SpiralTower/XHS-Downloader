@@ -25,10 +25,10 @@ export default function RouteErrorPage() {
 
   return (
     <main className="app-shell grid min-h-screen place-items-center bg-background p-4 text-foreground">
-      <Card className="glass-panel w-full max-w-xl border border-border">
-        <Card.Header>
+      <Card className="glass-panel w-full max-w-md border border-border">
+        <Card.Header className="text-center">
           <Card.Title id="main-heading" tabIndex={-1}>
-            无法打开此页面
+            无法打开
           </Card.Title>
           <Card.Description>HTTP {status}</Card.Description>
         </Card.Header>
@@ -38,17 +38,16 @@ export default function RouteErrorPage() {
               <XIcon className="size-5" />
             </Alert.Indicator>
             <Alert.Content>
-              <Alert.Title>请求失败</Alert.Title>
               <Alert.Description>{message}</Alert.Description>
             </Alert.Content>
           </Alert>
         </Card.Content>
-        <Card.Footer className="flex gap-3">
+        <Card.Footer className="flex gap-2">
           <Button onPress={() => navigate(-1)} variant="secondary">
             返回
           </Button>
           <Button onPress={() => window.location.reload()} variant="primary">
-            重新加载
+            重载
           </Button>
         </Card.Footer>
       </Card>

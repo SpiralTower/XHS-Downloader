@@ -1,13 +1,12 @@
 import {
   Alert,
   Button,
-  Card,
-  Chip,
   Description,
   Disclosure,
   FieldError,
   Form,
   Input,
+  InputGroup,
   Label,
   Spinner,
   TextField,
@@ -22,7 +21,6 @@ import {
   CheckIcon,
   SearchIcon,
   ShieldIcon,
-  SparklesIcon,
   XIcon,
 } from "../icons";
 import type {
@@ -68,6 +66,12 @@ export default function PublicExtractPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const controllerRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+
+  const hasResult =
+    state === "loading" ||
+    state === "error" ||
+    state === "success" ||
+    state === "warning";
 
   useEffect(() => {
     document.title = "作品解析 · XHS Downloader";
@@ -141,125 +145,91 @@ export default function PublicExtractPage() {
   };
 
   return (
-    <div className="grid gap-8">
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div className="max-w-3xl">
-          <Chip color="accent" size="sm" variant="soft">
-            <Chip.Label>
-              {access.public ? "公共解析已开放" : "管理员专用解析"}
-            </Chip.Label>
-          </Chip>
-          <h1
-            className="mt-4 text-balance text-3xl font-bold tracking-[-0.04em] outline-none sm:text-5xl"
-            id="main-heading"
-            tabIndex={-1}
-          >
-            提交作品链接，获取结构化内容与媒体。
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base">
-            留空高级连接项时使用服务端默认配置；填写内容仅覆盖本次请求。
+    <div
+      className={[
+        "mx-auto flex w-full max-w-3xl flex-col transition-[min-height,padding] duration-500 ease-out",
+        hasResult
+          ? "min-h-0 justify-start pt-2 sm:pt-4"
+          : "min-h-[calc(100vh-9rem)] justify-center py-8 pb-28 sm:min-h-[calc(100vh-8rem)] sm:pb-36 -translate-y-6 sm:-translate-y-10",
+      ].join(" ")}
+    >
+      <section
+        className={[
+          "flex flex-col items-center text-center transition-all duration-500 ease-out",
+          hasResult ? "mb-5 gap-1.5" : "mb-7 gap-3 sm:mb-9 sm:gap-3.5",
+        ].join(" ")}
+      >
+        <h1
+          className={[
+            "font-semibold tracking-[-0.04em] text-foreground outline-none transition-all duration-500 ease-out",
+            hasResult
+              ? "text-xl sm:text-2xl"
+              : "text-3xl sm:text-4xl lg:text-5xl",
+          ].join(" ")}
+          id="main-heading"
+          tabIndex={-1}
+        >
+          作品解析
+        </h1>
+        {!hasResult && (
+          <p className="max-w-md text-sm text-muted sm:text-base">
+            {access.public ? "粘贴链接，立即获取内容与媒体" : "管理员解析"}
           </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <ShieldIcon className="size-4 text-success" />
-          Cookie 与代理不会出现在响应或历史记录中
-        </div>
+        )}
       </section>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-        <Card className="glass-panel border border-border">
-          <Card.Header>
-            <div>
-              <Card.Title>解析作品</Card.Title>
-              <Card.Description>
-                只需作品链接；连接参数是可选的本次覆盖值。
-              </Card.Description>
-            </div>
-          </Card.Header>
-          <Form
-            aria-label="作品解析表单"
-            onSubmit={submit}
-            validationBehavior="native"
-            validationErrors={fieldErrors}
+      <Form
+        aria-label="作品解析"
+        className="w-full"
+        onSubmit={submit}
+        validationBehavior="native"
+        validationErrors={fieldErrors}
+      >
+        <TextField
+          className="w-full"
+          fullWidth
+          isRequired
+          name="url"
+          onChange={(url) => {
+            patchValues({ url });
+            setFieldErrors((current) => ({ ...current, url: "" }));
+          }}
+          validate={validateWorkUrl}
+          value={values.url}
+        >
+          <Label className="sr-only">作品链接</Label>
+          <InputGroup
+            className={[
+              "search-engine-bar min-h-12 w-full rounded-full border border-border bg-surface/90 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] duration-300 sm:min-h-13",
+              "focus-within:border-accent/40 focus-within:shadow-md",
+            ].join(" ")}
+            fullWidth
           >
-            <Card.Content className="grid gap-5">
-              <TextField
-                fullWidth
-                isRequired
-                name="url"
-                onChange={(url) => {
-                  patchValues({ url });
-                  setFieldErrors((current) => ({ ...current, url: "" }));
-                }}
-                validate={validateWorkUrl}
-                value={values.url}
-              >
-                <Label>作品链接</Label>
-                <Input
-                  autoCapitalize="none"
-                  autoComplete="url"
-                  inputMode="url"
-                  placeholder="粘贴小红书、RedNote 或 xhslink 分享链接"
-                  spellCheck={false}
-                />
-                <Description>支持完整链接和包含链接的分享文案。</Description>
-                <FieldError />
-              </TextField>
-
-              <Disclosure>
-                <Disclosure.Heading>
-                  <Button slot="trigger" type="button" variant="secondary">
-                    <ShieldIcon className="size-4" />
-                    高级连接选项
-                    <Disclosure.Indicator />
-                  </Button>
-                </Disclosure.Heading>
-                <Disclosure.Content>
-                  <Disclosure.Body className="mt-3 grid gap-4 rounded-2xl border border-border bg-surface-secondary p-4">
-                    <TextField
-                      fullWidth
-                      name="cookie"
-                      onChange={(cookie) => patchValues({ cookie })}
-                      value={values.cookie}
-                    >
-                      <Label>本次 Cookie</Label>
-                      <Input
-                        autoComplete="off"
-                        placeholder="留空则继承服务端默认 Cookie"
-                        spellCheck={false}
-                        type="password"
-                      />
-                      <Description>
-                        填写时仅覆盖本次解析，不会保存到浏览器或解析历史。
-                      </Description>
-                    </TextField>
-                    <TextField
-                      fullWidth
-                      name="proxy"
-                      onChange={(proxy) => patchValues({ proxy })}
-                      value={values.proxy}
-                    >
-                      <Label>本次代理地址</Label>
-                      <Input
-                        autoCapitalize="none"
-                        autoComplete="off"
-                        placeholder="留空则继承服务端默认代理"
-                        spellCheck={false}
-                        type="password"
-                      />
-                      <Description>
-                        使用 http 或 https 代理；带凭据的地址将按秘密处理。
-                      </Description>
-                      <FieldError />
-                    </TextField>
-                  </Disclosure.Body>
-                </Disclosure.Content>
-              </Disclosure>
-            </Card.Content>
-            <Card.Footer className="flex gap-3">
+            <InputGroup.Input
+              autoCapitalize="none"
+              autoComplete="url"
+              className="min-w-0 flex-1 bg-transparent ps-5 text-base sm:text-[15px]"
+              inputMode="url"
+              placeholder="粘贴小红书 / RedNote / xhslink 链接"
+              spellCheck={false}
+            />
+            <InputGroup.Suffix className="flex items-center gap-1 pe-1.5 sm:gap-1.5 sm:pe-2">
+              {hasResult && (
+                <Button
+                  className="hidden sm:inline-flex"
+                  onPress={reset}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  重置
+                </Button>
+              )}
               <Button
-                fullWidth
+                aria-label={state === "loading" ? "解析中" : "搜索"}
+                className="search-submit-btn"
                 isDisabled={state === "loading"}
+                size="sm"
                 type="submit"
                 variant="primary"
               >
@@ -268,71 +238,109 @@ export default function PublicExtractPage() {
                 ) : (
                   <SearchIcon className="size-4" />
                 )}
-                {state === "loading" ? "正在解析…" : "开始解析"}
+                <span className="search-submit-label">
+                  {state === "loading" ? "解析中" : "搜索"}
+                </span>
               </Button>
-              <Button onPress={reset} type="button" variant="secondary">
-                重置
+            </InputGroup.Suffix>
+          </InputGroup>
+          <FieldError className="mt-2 text-center" />
+        </TextField>
+
+        <div className="mt-2.5 flex justify-start px-1 sm:px-1.5">
+          <Disclosure className="w-full max-w-sm">
+            <Disclosure.Heading>
+              <Button
+                className="h-8 gap-1.5 px-2.5 text-xs text-muted"
+                slot="trigger"
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <ShieldIcon className="size-3.5" />
+                高级选项
+                <Disclosure.Indicator className="size-3.5" />
               </Button>
-            </Card.Footer>
-          </Form>
-        </Card>
-
-        <div
-          aria-live={state === "error" ? "assertive" : "polite"}
-          className="grid gap-4 outline-none"
-          ref={resultRef}
-          tabIndex={-1}
-        >
-          {state === "idle" && (
-            <Card className="glass-panel min-h-72 border border-dashed border-border" variant="transparent">
-              <Card.Content className="grid min-h-72 place-items-center text-center">
-                <div className="max-w-sm">
-                  <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent-soft-foreground">
-                    <SparklesIcon className="size-7" />
-                  </span>
-                  <h2 className="mt-4 font-semibold">等待一次解析任务</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted">
-                    结果会在这里展示，包括作品信息、版本来源和媒体资源。
-                  </p>
-                </div>
-              </Card.Content>
-            </Card>
-          )}
-
-          {state === "loading" && (
-            <Card className="glass-panel min-h-72 border border-border">
-              <Card.Content className="grid min-h-72 place-items-center text-center">
-                <div>
-                  <Spinner color="accent" size="lg" />
-                  <p className="mt-4 font-medium">正在获取作品数据…</p>
-                </div>
-              </Card.Content>
-            </Card>
-          )}
-
-          {state === "error" && (
-            <Alert status="danger">
-              <Alert.Indicator>
-                <XIcon className="size-5" />
-              </Alert.Indicator>
-              <Alert.Content>
-                <Alert.Title>解析失败</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
-          )}
-
-          {(state === "success" || state === "warning") && response && (
-            <ExtractResult response={response} />
-          )}
-
-          {state === "success" && (
-            <p className="sr-only">
-              <CheckIcon className="size-4" />
-              作品解析完成
-            </p>
-          )}
+            </Disclosure.Heading>
+            <Disclosure.Content>
+              <Disclosure.Body className="mt-2 grid gap-3 rounded-2xl border border-border bg-surface-secondary/90 p-3.5 text-start shadow-sm">
+                <TextField
+                  fullWidth
+                  name="cookie"
+                  onChange={(cookie) => patchValues({ cookie })}
+                  value={values.cookie}
+                >
+                  <Label>Cookie</Label>
+                  <Input
+                    autoComplete="off"
+                    placeholder="留空使用服务端默认"
+                    spellCheck={false}
+                    type="password"
+                  />
+                </TextField>
+                <TextField
+                  fullWidth
+                  name="proxy"
+                  onChange={(proxy) => patchValues({ proxy })}
+                  value={values.proxy}
+                >
+                  <Label>代理</Label>
+                  <Input
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    placeholder="留空使用服务端默认"
+                    spellCheck={false}
+                    type="password"
+                  />
+                  <FieldError />
+                </TextField>
+                <Description className="text-xs">
+                  仅覆盖本次请求，不会写入历史。
+                </Description>
+              </Disclosure.Body>
+            </Disclosure.Content>
+          </Disclosure>
         </div>
+      </Form>
+
+      <div
+        aria-live={state === "error" ? "assertive" : "polite"}
+        className={[
+          "outline-none",
+          hasResult ? "mt-8 animate-fade-in-up" : "mt-0",
+        ].join(" ")}
+        ref={resultRef}
+        tabIndex={-1}
+      >
+        {state === "loading" && (
+          <div className="flex flex-col items-center gap-3 py-12 text-muted">
+            <Spinner color="accent" size="lg" />
+            <p className="text-sm">正在获取作品…</p>
+          </div>
+        )}
+
+        {state === "error" && (
+          <Alert status="danger">
+            <Alert.Indicator>
+              <XIcon className="size-5" />
+            </Alert.Indicator>
+            <Alert.Content>
+              <Alert.Title>解析失败</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
+          </Alert>
+        )}
+
+        {(state === "success" || state === "warning") && response && (
+          <ExtractResult response={response} />
+        )}
+
+        {state === "success" && (
+          <p className="sr-only">
+            <CheckIcon className="size-4" />
+            作品解析完成
+          </p>
+        )}
       </div>
     </div>
   );

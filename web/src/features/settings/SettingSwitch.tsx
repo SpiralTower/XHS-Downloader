@@ -15,7 +15,7 @@ export default function SettingSwitch({
 }) {
   return (
     <Switch
-      className="rounded-2xl border border-border bg-surface-secondary p-4"
+      className="rounded-xl border border-border bg-surface-secondary p-3.5"
       isDisabled={isDisabled}
       isSelected={isSelected}
       onChange={onChange}
@@ -26,7 +26,7 @@ export default function SettingSwitch({
         </Switch.Control>
         <span className="font-medium">{label}</span>
       </Switch.Content>
-      <Description className="mt-1 ps-11">{description}</Description>
+      <Description className="mt-1 ps-11 text-sm">{description}</Description>
     </Switch>
   );
 }

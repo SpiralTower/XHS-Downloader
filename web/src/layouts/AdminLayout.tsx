@@ -10,7 +10,7 @@ import type { AdminSession } from "../types";
 function AdminNavigation() {
   const className = ({ isActive }: { isActive: boolean }) =>
     [
-      "rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+      "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
       isActive
         ? "bg-accent-soft text-accent-soft-foreground"
@@ -18,12 +18,12 @@ function AdminNavigation() {
     ].join(" ");
 
   return (
-    <nav aria-label="管理端导航" className="flex items-center gap-1">
+    <nav aria-label="管理端导航" className="hidden items-center gap-1 sm:flex">
       <NavLink className={className} to="/admin/settings">
-        系统设置
+        设置
       </NavLink>
       <NavLink className={className} to="/admin/history">
-        解析历史
+        历史
       </NavLink>
     </nav>
   );
@@ -44,8 +44,8 @@ export default function AdminLayout() {
     } catch (cause) {
       setLogoutError(
         cause instanceof Error
-          ? "退出请求失败，无法确认会话已清除：" + cause.message
-          : "退出请求失败，无法确认会话已清除，请稍后重试。",
+          ? "退出失败：" + cause.message
+          : "退出失败，请稍后重试",
       );
     } finally {
       setIsLoggingOut(false);
@@ -61,7 +61,7 @@ export default function AdminLayout() {
         跳到主要内容
       </a>
       <div className="surface-grid pointer-events-none absolute inset-0" />
-      <div className="relative">
+      <div className="relative flex min-h-screen flex-col">
         <AppHeader
           isLoggingOut={isLoggingOut}
           navigation={<AdminNavigation />}
@@ -69,11 +69,42 @@ export default function AdminLayout() {
           username={session.username ?? "管理员"}
         />
         <main
-          className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10"
+          className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
           id="main-content"
         >
+          <nav
+            aria-label="管理端导航"
+            className="mb-5 flex items-center gap-1 sm:hidden"
+          >
+            <NavLink
+              className={({ isActive }) =>
+                [
+                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-accent-soft text-accent-soft-foreground"
+                    : "text-muted hover:bg-surface-secondary hover:text-foreground",
+                ].join(" ")
+              }
+              to="/admin/settings"
+            >
+              设置
+            </NavLink>
+            <NavLink
+              className={({ isActive }) =>
+                [
+                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-accent-soft text-accent-soft-foreground"
+                    : "text-muted hover:bg-surface-secondary hover:text-foreground",
+                ].join(" ")
+              }
+              to="/admin/history"
+            >
+              历史
+            </NavLink>
+          </nav>
           {logoutError && (
-            <Alert className="mb-6" status="danger">
+            <Alert className="mb-5" status="danger">
               <Alert.Indicator>
                 <XIcon className="size-5" />
               </Alert.Indicator>

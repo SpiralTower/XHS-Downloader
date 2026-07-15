@@ -13,7 +13,6 @@ import { useLoaderData, useNavigate } from "react-router";
 import { formatDateTime, toWorkView } from "../api";
 import {
   ArrowUpRightIcon,
-  CheckIcon,
   ChevronRightIcon,
   ClockIcon,
   ImageIcon,
@@ -29,7 +28,7 @@ const saveLabels: Record<SaveStatus, string> = {
   disabled: "未保存",
   pending: "保存中",
   saved: "已保存",
-  failed: "保存失败",
+  failed: "失败",
 };
 
 const saveColors: Record<
@@ -56,26 +55,20 @@ function ResourceTable({ resources }: { resources: ExtractionResource[] }) {
   return (
     <Table variant="secondary">
       <Table.ScrollContainer>
-        <Table.Content
-          aria-label="版本资源"
-          className="min-w-[760px]"
-        >
+        <Table.Content aria-label="版本资源" className="min-w-[760px]">
           <Table.Header>
             <Table.Column isRowHeader>资源</Table.Column>
-            <Table.Column>保存状态</Table.Column>
+            <Table.Column>状态</Table.Column>
             <Table.Column>类型 / 大小</Table.Column>
             <Table.Column>校验</Table.Column>
-            <Table.Column>远端地址</Table.Column>
+            <Table.Column>地址</Table.Column>
           </Table.Header>
           <Table.Body
             renderEmptyState={() => (
-              <div className="grid min-h-48 place-items-center px-4 py-10 text-center">
+              <div className="grid min-h-40 place-items-center px-4 py-10 text-center">
                 <div>
                   <ImageIcon className="mx-auto size-6 text-muted" />
-                  <p className="mt-3 font-semibold">此版本没有资源</p>
-                  <p className="mt-1 text-sm text-muted">
-                    该快照只保存了作品元数据。
-                  </p>
+                  <p className="mt-3 font-medium">无资源</p>
                 </div>
               </div>
             )}
@@ -156,20 +149,20 @@ function SnapshotPanel({ version }: { version: StoredVersion }) {
   );
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <Chip color="accent" size="sm" variant="soft">
           <Chip.Label>{work.type}</Chip.Label>
         </Chip>
         <Chip size="sm" variant="tertiary">
-          <Chip.Label>版本 v{version.number}</Chip.Label>
+          <Chip.Label>v{version.number}</Chip.Label>
         </Chip>
       </div>
 
       <div>
         <h2 className="text-xl font-semibold">{work.title}</h2>
         <p className="mt-1 text-sm text-muted">
-          {work.authorName} · 捕获于 {formatDateTime(version.captured_at)}
+          {work.authorName} · {formatDateTime(version.captured_at)}
         </p>
       </div>
 
@@ -177,7 +170,7 @@ function SnapshotPanel({ version }: { version: StoredVersion }) {
         {work.description}
       </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ["点赞", work.metrics.liked],
           ["收藏", work.metrics.collected],
@@ -203,7 +196,7 @@ function SnapshotPanel({ version }: { version: StoredVersion }) {
 
       {work.workUrl && (
         <Link href={work.workUrl} rel="noreferrer" target="_blank">
-          查看原作品
+          原作品
           <ArrowUpRightIcon className="size-4" />
         </Link>
       )}
@@ -227,31 +220,31 @@ export default function WorkHistoryPage() {
     history.versions[0];
 
   return (
-    <div className="grid gap-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="grid gap-5">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Button
-            className="mb-4"
+            className="mb-3"
             onPress={() => navigate("/admin/history")}
             size="sm"
             variant="secondary"
           >
-            返回解析历史
+            返回
           </Button>
           <h1
-            className="text-3xl font-bold tracking-[-0.035em] outline-none"
+            className="text-2xl font-semibold tracking-[-0.03em] outline-none sm:text-3xl"
             id="main-heading"
             tabIndex={-1}
           >
-            作品 {history.work.platform_id}
+            {history.work.platform_id}
           </h1>
-          <p className="mt-2 text-sm text-muted">
-            首次发现 {formatDateTime(history.work.first_seen_at)} · 最近发现{" "}
+          <p className="mt-1 text-sm text-muted">
+            {formatDateTime(history.work.first_seen_at)} ·{" "}
             {formatDateTime(history.work.last_seen_at)}
           </p>
         </div>
-        <Chip color="accent" variant="soft">
-          <Chip.Label>{history.versions.length} 个版本</Chip.Label>
+        <Chip color="accent" size="sm" variant="soft">
+          <Chip.Label>{history.versions.length} 版本</Chip.Label>
         </Chip>
       </header>
 
@@ -261,24 +254,19 @@ export default function WorkHistoryPage() {
             <ClockIcon className="size-5" />
           </Alert.Indicator>
           <Alert.Content>
-            <Alert.Title>暂无版本快照</Alert.Title>
-            <Alert.Description>
-              此作品记录存在，但还没有成功解析的内容版本。
-            </Alert.Description>
+            <Alert.Title>暂无版本</Alert.Title>
+            <Alert.Description>尚无成功解析的快照</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
           <Card className="glass-panel border border-border">
             <Card.Header>
-              <div>
-                <Card.Title>版本时间线</Card.Title>
-                <Card.Description>新版本优先显示。</Card.Description>
-              </div>
+              <Card.Title>版本</Card.Title>
             </Card.Header>
             <Card.Content
               aria-label="选择作品版本"
-              className="grid gap-2"
+              className="grid gap-1.5"
               role="group"
             >
               {history.versions.map((version) => {
@@ -286,13 +274,13 @@ export default function WorkHistoryPage() {
                 return (
                   <Button
                     aria-pressed={selected}
-                    className="h-auto w-full justify-between py-3 text-start"
+                    className="h-auto w-full justify-between py-2.5 text-start"
                     key={version.id}
                     onPress={() => setSelectedVersionID(version.id)}
                     variant={selected ? "primary" : "secondary"}
                   >
                     <span className="grid gap-0.5">
-                      <span className="font-medium">版本 v{version.number}</span>
+                      <span className="font-medium">v{version.number}</span>
                       <span
                         className={
                           selected
@@ -311,7 +299,7 @@ export default function WorkHistoryPage() {
           </Card>
 
           <Card className="glass-panel min-w-0 border border-border">
-            <Card.Content className="min-w-0 pt-5">
+            <Card.Content className="min-w-0 pt-4">
               <Tabs defaultSelectedKey="snapshot" variant="secondary">
                 <Tabs.ListContainer>
                   <Tabs.List aria-label="版本详情">
@@ -325,10 +313,10 @@ export default function WorkHistoryPage() {
                     </Tabs.Tab>
                   </Tabs.List>
                 </Tabs.ListContainer>
-                <Tabs.Panel className="pt-6" id="snapshot">
+                <Tabs.Panel className="pt-5" id="snapshot">
                   <SnapshotPanel version={selectedVersion} />
                 </Tabs.Panel>
-                <Tabs.Panel className="pt-6" id="resources">
+                <Tabs.Panel className="pt-5" id="resources">
                   <ResourceTable resources={selectedVersion.resources} />
                 </Tabs.Panel>
               </Tabs>
@@ -336,11 +324,6 @@ export default function WorkHistoryPage() {
           </Card>
         </div>
       )}
-
-      <p className="flex items-center gap-2 text-xs text-muted">
-        <CheckIcon className="size-4 text-success" />
-        浏览器仅接收脱敏资源元数据，不包含服务端文件路径。
-      </p>
     </div>
   );
 }

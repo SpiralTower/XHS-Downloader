@@ -12,10 +12,10 @@ export default function PublicLayout() {
         跳到主要内容
       </a>
       <div className="surface-grid pointer-events-none absolute inset-0" />
-      <div className="relative">
+      <div className="relative flex min-h-screen flex-col">
         <AppHeader />
         <main
-          className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12"
+          className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
           id="main-content"
         >
           <Outlet />

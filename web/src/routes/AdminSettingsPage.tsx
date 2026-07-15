@@ -2,7 +2,6 @@ import {
   Alert,
   Button,
   Card,
-  Description,
   Fieldset,
   Form,
   Spinner,
@@ -18,7 +17,7 @@ import {
 } from "../api";
 import SecretSetting from "../features/settings/SecretSetting";
 import SettingSwitch from "../features/settings/SettingSwitch";
-import { CheckIcon, RefreshIcon, ShieldIcon, XIcon } from "../icons";
+import { CheckIcon, RefreshIcon, XIcon } from "../icons";
 import type {
   AdminSettings,
   SecretAction,
@@ -100,7 +99,7 @@ export default function AdminSettingsPage() {
       setDraft(result);
       setCookie({ action: "keep", value: "" });
       setProxy({ action: "keep", value: "" });
-      setSavedMessage(`设置已保存，当前修订号为 ${result.revision}`);
+      setSavedMessage(`已保存 · 修订 ${result.revision}`);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         navigate("/admin/login?next=/admin/settings", { replace: true });
@@ -108,7 +107,7 @@ export default function AdminSettingsPage() {
       }
       setError(
         cause instanceof ApiError && cause.status === 409
-          ? "设置已被其他会话修改。请重新载入后再保存。"
+          ? "设置已被其他会话修改，请重新载入"
           : cause instanceof Error
             ? cause.message
             : "保存设置失败",
@@ -127,18 +126,18 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <div className="grid gap-6">
-      <header>
+    <div className="grid gap-5">
+      <header className="flex items-end justify-between gap-4">
         <h1
-          className="text-3xl font-bold tracking-[-0.035em] outline-none"
+          className="text-2xl font-semibold tracking-[-0.03em] outline-none sm:text-3xl"
           id="main-heading"
           tabIndex={-1}
         >
           系统设置
         </h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          控制匿名访问、默认连接、资源保存和历史作品的重新抓取策略。
-        </p>
+        {draft && (
+          <p className="text-xs text-muted">修订 {draft.revision}</p>
+        )}
       </header>
 
       {error && (
@@ -147,12 +146,11 @@ export default function AdminSettingsPage() {
             <XIcon className="size-5" />
           </Alert.Indicator>
           <Alert.Content>
-            <Alert.Title>设置操作失败</Alert.Title>
             <Alert.Description>{error}</Alert.Description>
           </Alert.Content>
           <Button onPress={() => void load()} size="sm" variant="secondary">
             <RefreshIcon className="size-4" />
-            重新载入
+            重载
           </Button>
         </Alert>
       )}
@@ -163,32 +161,24 @@ export default function AdminSettingsPage() {
             <CheckIcon className="size-5" />
           </Alert.Indicator>
           <Alert.Content>
-            <Alert.Title>保存成功</Alert.Title>
             <Alert.Description>{savedMessage}</Alert.Description>
           </Alert.Content>
         </Alert>
       )}
 
       {isLoading ? (
-        <Card className="glass-panel min-h-72 border border-border">
-          <Card.Content className="grid min-h-72 place-items-center text-center">
-            <div role="status">
-              <Spinner color="accent" size="lg" />
-              <p className="mt-4 font-medium">正在读取系统设置…</p>
-            </div>
+        <Card className="glass-panel min-h-64 border border-border">
+          <Card.Content className="grid min-h-64 place-items-center">
+            <Spinner color="accent" size="lg" />
           </Card.Content>
         </Card>
       ) : !draft || !settings ? (
-        <Card className="glass-panel min-h-72 border border-border">
-          <Card.Content className="grid min-h-72 place-items-center px-6 text-center">
-            <div className="max-w-md">
-              <XIcon className="mx-auto size-7 text-danger" />
-              <h2 className="mt-4 text-lg font-semibold">系统设置尚未载入</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                本次读取失败，页面没有可供编辑的设置。请重新载入后再继续。
-              </p>
+        <Card className="glass-panel min-h-64 border border-border">
+          <Card.Content className="grid min-h-64 place-items-center px-6 text-center">
+            <div className="max-w-sm">
+              <p className="font-medium">设置未载入</p>
               <Button
-                className="mt-5"
+                className="mt-4"
                 onPress={() => void load()}
                 variant="secondary"
               >
@@ -201,27 +191,22 @@ export default function AdminSettingsPage() {
       ) : (
         <Form
           aria-label="系统设置表单"
-          className="grid gap-6"
+          className="grid gap-4"
           onSubmit={submit}
           validationBehavior="native"
         >
           <Card className="glass-panel border border-border">
             <Card.Header>
-              <div>
-                <Card.Title>访问策略</Card.Title>
-                <Card.Description>
-                  决定未登录访问者是否能够使用用户解析页。
-                </Card.Description>
-              </div>
+              <Card.Title>访问</Card.Title>
             </Card.Header>
             <Card.Content>
               <Fieldset>
                 <Fieldset.Legend className="sr-only">访问策略</Fieldset.Legend>
                 <SettingSwitch
-                  description="关闭后，匿名访问解析接口会收到 401，并转到管理端登录。"
+                  description="关闭后匿名解析需登录"
                   isDisabled={isSaving}
                   isSelected={draft.public}
-                  label="允许匿名公开解析"
+                  label="允许公开解析"
                   onChange={(value) =>
                     setDraft((current) =>
                       current ? { ...current, public: value } : current,
@@ -234,17 +219,12 @@ export default function AdminSettingsPage() {
 
           <Card className="glass-panel border border-border">
             <Card.Header>
-              <div>
-                <Card.Title>默认连接</Card.Title>
-                <Card.Description>
-                  仅服务器持有真实值；浏览器只能查看是否已配置。
-                </Card.Description>
-              </div>
+              <Card.Title>默认连接</Card.Title>
             </Card.Header>
-            <Card.Content className="grid gap-4">
+            <Card.Content className="grid gap-3">
               <SecretSetting
                 action={cookie.action}
-                description="保存后，新解析请求在未提供本次 Cookie 时继承它。"
+                description="新解析在未提供 Cookie 时继承"
                 fieldName="default_cookie"
                 isDisabled={isSaving}
                 label="默认 Cookie"
@@ -259,7 +239,7 @@ export default function AdminSettingsPage() {
               />
               <SecretSetting
                 action={proxy.action}
-                description="使用 http 或 https URL；代理凭据不会返回浏览器。"
+                description="http / https 代理，凭据不回传"
                 fieldName="default_proxy"
                 isDisabled={isSaving}
                 label="默认代理"
@@ -277,35 +257,30 @@ export default function AdminSettingsPage() {
 
           <Card className="glass-panel border border-border">
             <Card.Header>
-              <div>
-                <Card.Title>保存策略</Card.Title>
-                <Card.Description>
-                  每类资源独立决定是否保存到服务端卷。
-                </Card.Description>
-              </div>
+              <Card.Title>保存</Card.Title>
             </Card.Header>
             <Card.Content>
-              <Fieldset className="grid gap-3">
-                <Fieldset.Legend className="sr-only">资源保存策略</Fieldset.Legend>
+              <Fieldset className="grid gap-2">
+                <Fieldset.Legend className="sr-only">资源保存</Fieldset.Legend>
                 <SettingSwitch
-                  description="保存标题、描述、标签和互动数据等结构化文案。"
+                  description="标题、描述、标签与互动数据"
                   isDisabled={isSaving}
                   isSelected={draft.save.text}
-                  label="保存文案"
+                  label="文案"
                   onChange={(value) => updateSave("text", value)}
                 />
                 <SettingSwitch
-                  description="保存图片及实况照片的静态图片资源。"
+                  description="图片与实况静态帧"
                   isDisabled={isSaving}
                   isSelected={draft.save.images}
-                  label="保存图片"
+                  label="图片"
                   onChange={(value) => updateSave("images", value)}
                 />
                 <SettingSwitch
-                  description="保存视频及实况照片对应的视频资源。"
+                  description="视频与实况视频"
                   isDisabled={isSaving}
                   isSelected={draft.save.videos}
-                  label="保存视频"
+                  label="视频"
                   onChange={(value) => updateSave("videos", value)}
                 />
               </Fieldset>
@@ -314,16 +289,11 @@ export default function AdminSettingsPage() {
 
           <Card className="glass-panel border border-border">
             <Card.Header>
-              <div>
-                <Card.Title>已有记录处理</Card.Title>
-                <Card.Description>
-                  控制相同作品再次提交时是否访问上游并创建新快照。
-                </Card.Description>
-              </div>
+              <Card.Title>抓取</Card.Title>
             </Card.Header>
             <Card.Content>
               <SettingSwitch
-                description="开启后每次重新抓取；关闭后直接返回已有的最新版本。"
+                description="关闭后直接返回已有最新版本"
                 isDisabled={isSaving}
                 isSelected={draft.refetch}
                 label="已有记录时重新抓取"
@@ -336,33 +306,23 @@ export default function AdminSettingsPage() {
             </Card.Content>
           </Card>
 
-          <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-background/90 p-4 shadow-lg backdrop-blur-xl">
-            <p className="flex items-center gap-2 text-xs text-muted">
-              <ShieldIcon className="size-4" />
-              当前修订号：{draft.revision}
-            </p>
-            <div className="flex gap-3">
-              <Button
-                isDisabled={isSaving}
-                onPress={() => {
-                  setDraft(settings);
-                  setCookie({ action: "keep", value: "" });
-                  setProxy({ action: "keep", value: "" });
-                }}
-                type="button"
-                variant="secondary"
-              >
-                放弃修改
-              </Button>
-              <Button
-                isDisabled={isSaving}
-                type="submit"
-                variant="primary"
-              >
-                {isSaving && <Spinner color="current" size="sm" />}
-                {isSaving ? "保存中…" : "保存设置"}
-              </Button>
-            </div>
+          <div className="sticky bottom-4 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-border bg-background/90 p-3 shadow-lg backdrop-blur-xl">
+            <Button
+              isDisabled={isSaving}
+              onPress={() => {
+                setDraft(settings);
+                setCookie({ action: "keep", value: "" });
+                setProxy({ action: "keep", value: "" });
+              }}
+              type="button"
+              variant="secondary"
+            >
+              放弃
+            </Button>
+            <Button isDisabled={isSaving} type="submit" variant="primary">
+              {isSaving && <Spinner color="current" size="sm" />}
+              {isSaving ? "保存中…" : "保存"}
+            </Button>
           </div>
         </Form>
       )}

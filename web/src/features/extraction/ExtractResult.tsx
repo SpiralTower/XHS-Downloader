@@ -22,10 +22,10 @@ const metricLabels = {
 } as const;
 
 const connectionLabels = {
-  default: "服务端默认",
-  override: "本次覆盖",
-  disabled: "本次禁用",
-  none: "未使用",
+  default: "默认",
+  override: "覆盖",
+  disabled: "禁用",
+  none: "未用",
 } as const;
 
 export default function ExtractResult({
@@ -50,20 +50,30 @@ export default function ExtractResult({
     >
       <Alert status={warning ? "warning" : "success"}>
         <Alert.Indicator>
-          {warning ? <XIcon className="size-5" /> : <CheckIcon className="size-5" />}
+          {warning ? (
+            <XIcon className="size-5" />
+          ) : (
+            <CheckIcon className="size-5" />
+          )}
         </Alert.Indicator>
         <Alert.Content>
-          <Alert.Title>{warning ? "解析完成，部分资源保存失败" : "解析完成"}</Alert.Title>
-          <Alert.Description>
-            {work.downloadError ||
-              failedResources[0]?.save_error ||
-              response.message}
-          </Alert.Description>
+          <Alert.Title>
+            {warning ? "部分资源保存失败" : "解析完成"}
+          </Alert.Title>
+          {(work.downloadError ||
+            failedResources[0]?.save_error ||
+            (response.message && response.message !== "ok")) && (
+            <Alert.Description>
+              {work.downloadError ||
+                failedResources[0]?.save_error ||
+                response.message}
+            </Alert.Description>
+          )}
         </Alert.Content>
       </Alert>
 
       <Card className="glass-panel min-w-0 border border-border">
-        <Card.Header className="min-w-0 items-start justify-between gap-4">
+        <Card.Header className="min-w-0 items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <Card.Title className="break-words text-xl [overflow-wrap:anywhere]">
               {work.title}
@@ -83,9 +93,7 @@ export default function ExtractResult({
                 <span>{work.authorName}</span>
               )}
               <span aria-hidden="true">·</span>
-              <span>发布 {work.publishedAt}</span>
-              <span aria-hidden="true">·</span>
-              <span>更新 {work.updatedAt}</span>
+              <span>{work.publishedAt}</span>
             </div>
           </div>
           <Chip color="accent" size="sm" variant="soft">
@@ -93,34 +101,40 @@ export default function ExtractResult({
           </Chip>
         </Card.Header>
 
-        <Card.Content className="grid min-w-0 gap-5">
-          <div className="grid gap-2 rounded-2xl bg-surface-secondary p-4 text-xs text-muted sm:grid-cols-2">
-            <span className="flex items-center gap-2">
+        <Card.Content className="grid min-w-0 gap-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+            <span className="inline-flex items-center gap-1.5">
               {response.source === "cache" ? (
-                <ClockIcon className="size-4" />
+                <ClockIcon className="size-3.5" />
               ) : (
-                <RefreshIcon className="size-4" />
+                <RefreshIcon className="size-3.5" />
               )}
-              {response.source === "cache" ? "使用历史缓存" : "已重新抓取"}
+              {response.source === "cache" ? "缓存" : "新抓取"}
             </span>
             <span>
-              版本 v{response.version.number} · {formatDateTime(response.version.captured_at)}
+              v{response.version.number} ·{" "}
+              {formatDateTime(response.version.captured_at)}
             </span>
             <span>
-              Cookie：{connectionLabels[response.connection.cookie_source]}
+              Cookie {connectionLabels[response.connection.cookie_source]}
             </span>
             <span>
-              代理：{connectionLabels[response.connection.proxy_source]}
+              代理 {connectionLabels[response.connection.proxy_source]}
             </span>
           </div>
 
-          <p className="whitespace-pre-wrap break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">
-            {work.description}
-          </p>
+          {work.description && (
+            <p className="whitespace-pre-wrap break-words text-sm leading-7 text-muted [overflow-wrap:anywhere]">
+              {work.description}
+            </p>
+          )}
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(work.metrics).map(([key, value]) => (
-              <div className="min-w-0 rounded-xl bg-surface-secondary p-3" key={key}>
+              <div
+                className="min-w-0 rounded-xl bg-surface-secondary p-3"
+                key={key}
+              >
                 <p className="truncate text-lg font-semibold">{value}</p>
                 <p className="text-xs text-muted">
                   {metricLabels[key as keyof typeof metricLabels]}
@@ -130,7 +144,7 @@ export default function ExtractResult({
           </div>
 
           {work.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {work.tags.map((tag, index) => (
                 <Chip
                   className="max-w-full"
@@ -147,8 +161,8 @@ export default function ExtractResult({
           {work.media.length > 0 && (
             <div className="grid gap-3">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold">媒体预览</h2>
-                <span className="text-xs text-muted">共 {work.media.length} 项</span>
+                <h2 className="text-sm font-semibold">媒体</h2>
+                <span className="text-xs text-muted">{work.media.length}</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {work.media.slice(0, 4).map((item, index) => (
@@ -159,7 +173,7 @@ export default function ExtractResult({
                   />
                 ))}
               </div>
-              <div className="media-scroll grid max-h-56 gap-2 overflow-y-auto pr-1">
+              <div className="media-scroll grid max-h-56 gap-1.5 overflow-y-auto pr-1">
                 {work.media.map((item, index) => (
                   <Link
                     className="flex min-w-0 items-center justify-between rounded-xl border border-border px-3 py-2 text-sm"
@@ -182,11 +196,11 @@ export default function ExtractResult({
 
         <Card.Footer className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <span className="max-w-full truncate text-xs text-muted">
-            作品 ID：{response.work.platform_id} · 解析记录 #{response.run_id}
+            {response.work.platform_id} · #{response.run_id}
           </span>
           {work.workUrl && (
             <Link href={work.workUrl} rel="noreferrer" target="_blank">
-              查看原作品
+              原作品
               <ArrowUpRightIcon className="size-4" />
             </Link>
           )}

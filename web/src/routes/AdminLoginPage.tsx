@@ -50,7 +50,7 @@ export default function AdminLoginPage() {
           cause.status === 401
             ? "用户名或密码不正确"
             : cause.status === 503
-              ? "管理端凭据尚未配置，请先配置服务端环境变量"
+              ? "管理端凭据尚未配置"
               : cause.message,
         );
       } else {
@@ -64,31 +64,13 @@ export default function AdminLoginPage() {
   return (
     <div className="app-shell relative min-h-screen overflow-hidden bg-background text-foreground">
       <div className="surface-grid pointer-events-none absolute inset-0" />
-      <div className="relative">
+      <div className="relative flex min-h-screen flex-col">
         <AppHeader />
         <main
-          className="mx-auto grid min-h-[calc(100vh-5rem)] w-full max-w-7xl place-items-center px-4 py-10 sm:px-6 lg:px-8"
+          className="mx-auto grid w-full max-w-6xl flex-1 place-items-center px-4 py-10 sm:px-6 lg:px-8"
           id="main-content"
         >
-          <Card className="glass-panel w-full max-w-md border border-border">
-            <Card.Header>
-              <span className="grid size-11 place-items-center rounded-2xl bg-accent-soft text-accent-soft-foreground">
-                <ShieldIcon className="size-5" />
-              </span>
-              <div>
-                <Card.Title
-                  className="outline-none"
-                  id="main-heading"
-                  tabIndex={-1}
-                >
-                  登录管理端
-                </Card.Title>
-                <Card.Description>
-                  管理默认连接、保存策略和解析历史。
-                </Card.Description>
-              </div>
-            </Card.Header>
-
+          <Card className="glass-panel w-full max-w-sm border border-border">
             <Form
               aria-labelledby="main-heading"
               onSubmit={submit}
@@ -102,7 +84,6 @@ export default function AdminLoginPage() {
                       <XIcon className="size-5" />
                     </Alert.Indicator>
                     <Alert.Content>
-                      <Alert.Title>登录失败</Alert.Title>
                       <Alert.Description>{error}</Alert.Description>
                     </Alert.Content>
                   </Alert>
@@ -137,7 +118,7 @@ export default function AdminLoginPage() {
                 </TextField>
               </Card.Content>
 
-              <Card.Footer className="flex gap-3">
+              <Card.Footer className="flex flex-col gap-2">
                 <Button
                   fullWidth
                   isDisabled={isSubmitting}
@@ -145,12 +126,13 @@ export default function AdminLoginPage() {
                   variant="primary"
                 >
                   {isSubmitting && <Spinner color="current" size="sm" />}
-                  {isSubmitting ? "正在登录…" : "登录"}
+                  {isSubmitting ? "登录中…" : "登录"}
                 </Button>
                 <Button
+                  fullWidth
                   onPress={() => navigate("/")}
                   type="button"
-                  variant="secondary"
+                  variant="ghost"
                 >
                   返回首页
                 </Button>
