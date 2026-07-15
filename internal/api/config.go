@@ -10,58 +10,67 @@ import (
 )
 
 const (
-	defaultHost            = "0.0.0.0"
-	defaultPort            = 5556
-	defaultVolumeDir       = "Volume"
-	defaultWebDistDir      = "web/dist"
-	defaultRequestTimeout  = 15 * time.Second
-	defaultDownloadTimeout = 30 * time.Minute
-	defaultDownloadIdle    = 60 * time.Second
-	defaultMaxBodyBytes    = int64(1 << 20)
-	defaultMaxUpstreamBody = int64(16 << 20)
-	defaultMaxMediaBytes   = int64(2 << 30)
-	defaultAdminUsername   = "admin"
-	defaultAdminSessionTTL = 12 * time.Hour
+	defaultHost                  = "0.0.0.0"
+	defaultPort                  = 5556
+	defaultVolumeDir             = "Volume"
+	defaultWebDistDir            = "web/dist"
+	defaultRequestTimeout        = 15 * time.Second
+	defaultDownloadTimeout       = 30 * time.Minute
+	defaultDownloadIdle          = 60 * time.Second
+	defaultMaxBodyBytes          = int64(1 << 20)
+	defaultMaxUpstreamBody       = int64(16 << 20)
+	defaultMaxMediaBytes         = int64(2 << 30)
+	defaultPublicRateLimit       = 12
+	defaultPublicGlobalRateLimit = 120
+	defaultPublicMaxConcurrency  = 4
+	defaultAdminUsername         = "admin"
+	defaultAdminSessionTTL       = 12 * time.Hour
 )
 
 // Config contains the runtime settings for the core API server.
 type Config struct {
-	Host                  string
-	Port                  int
-	VolumeDir             string
-	WebDistDir            string
-	RequestTimeout        time.Duration
-	DownloadTimeout       time.Duration
-	DownloadIdleTimeout   time.Duration
-	AllowPrivateProxy     bool
-	MaxBodyBytes          int64
-	MaxUpstreamBody       int64
-	MaxMediaBytes         int64
-	DatabasePath          string
-	SecretKeyPath         string
-	SecretKeyManaged      bool
-	AdminUsername         string
-	AdminPassword         string
-	AdminPasswordRequired bool
-	AdminSessionTTL       time.Duration
-	SessionCookieSecure   bool
+	Host                           string
+	Port                           int
+	VolumeDir                      string
+	WebDistDir                     string
+	RequestTimeout                 time.Duration
+	DownloadTimeout                time.Duration
+	DownloadIdleTimeout            time.Duration
+	AllowPrivateProxy              bool
+	MaxBodyBytes                   int64
+	MaxUpstreamBody                int64
+	MaxMediaBytes                  int64
+	PublicRateLimitPerMinute       int
+	PublicGlobalRateLimitPerMinute int
+	PublicMaxConcurrency           int
+	DatabasePath                   string
+	SecretKeyPath                  string
+	SecretKeyManaged               bool
+	AdminUsername                  string
+	AdminPassword                  string
+	AdminPasswordRequired          bool
+	AdminSessionTTL                time.Duration
+	SessionCookieSecure            bool
 }
 
 // ConfigFromEnv loads server configuration from environment variables.
 func ConfigFromEnv() (Config, error) {
 	cfg := Config{
-		Host:                envOrDefault("HOST", defaultHost),
-		Port:                defaultPort,
-		VolumeDir:           envOrDefault("XHS_VOLUME_DIR", defaultVolumeDir),
-		WebDistDir:          envOrDefault("WEB_DIST_DIR", defaultWebDistDir),
-		RequestTimeout:      defaultRequestTimeout,
-		DownloadTimeout:     defaultDownloadTimeout,
-		DownloadIdleTimeout: defaultDownloadIdle,
-		MaxBodyBytes:        defaultMaxBodyBytes,
-		MaxUpstreamBody:     defaultMaxUpstreamBody,
-		MaxMediaBytes:       defaultMaxMediaBytes,
-		AdminUsername:       envOrDefault("XHS_ADMIN_USERNAME", defaultAdminUsername),
-		AdminSessionTTL:     defaultAdminSessionTTL,
+		Host:                           envOrDefault("HOST", defaultHost),
+		Port:                           defaultPort,
+		VolumeDir:                      envOrDefault("XHS_VOLUME_DIR", defaultVolumeDir),
+		WebDistDir:                     envOrDefault("WEB_DIST_DIR", defaultWebDistDir),
+		RequestTimeout:                 defaultRequestTimeout,
+		DownloadTimeout:                defaultDownloadTimeout,
+		DownloadIdleTimeout:            defaultDownloadIdle,
+		MaxBodyBytes:                   defaultMaxBodyBytes,
+		MaxUpstreamBody:                defaultMaxUpstreamBody,
+		MaxMediaBytes:                  defaultMaxMediaBytes,
+		PublicRateLimitPerMinute:       defaultPublicRateLimit,
+		PublicGlobalRateLimitPerMinute: defaultPublicGlobalRateLimit,
+		PublicMaxConcurrency:           defaultPublicMaxConcurrency,
+		AdminUsername:                  envOrDefault("XHS_ADMIN_USERNAME", defaultAdminUsername),
+		AdminSessionTTL:                defaultAdminSessionTTL,
 	}
 	cfg.DatabasePath = strings.TrimSpace(os.Getenv("XHS_DATABASE_PATH"))
 	cfg.SecretKeyPath = strings.TrimSpace(os.Getenv("XHS_SECRET_KEY_PATH"))
@@ -123,6 +132,22 @@ func ConfigFromEnv() (Config, error) {
 		}
 		cfg.MaxMediaBytes = limit
 	}
+	for _, setting := range []struct {
+		name   string
+		target *int
+	}{
+		{name: "XHS_PUBLIC_RATE_LIMIT_PER_MINUTE", target: &cfg.PublicRateLimitPerMinute},
+		{name: "XHS_PUBLIC_GLOBAL_RATE_LIMIT_PER_MINUTE", target: &cfg.PublicGlobalRateLimitPerMinute},
+		{name: "XHS_PUBLIC_MAX_CONCURRENCY", target: &cfg.PublicMaxConcurrency},
+	} {
+		if value := strings.TrimSpace(os.Getenv(setting.name)); value != "" {
+			limit, err := strconv.Atoi(value)
+			if err != nil || limit < 1 {
+				return Config{}, fmt.Errorf("invalid %s %q", setting.name, value)
+			}
+			*setting.target = limit
+		}
+	}
 	if value := strings.TrimSpace(os.Getenv("XHS_ADMIN_SESSION_TTL")); value != "" {
 		ttl, err := time.ParseDuration(value)
 		if err != nil || ttl <= 0 {
@@ -171,6 +196,15 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxMediaBytes <= 0 {
 		c.MaxMediaBytes = defaultMaxMediaBytes
+	}
+	if c.PublicRateLimitPerMinute <= 0 {
+		c.PublicRateLimitPerMinute = defaultPublicRateLimit
+	}
+	if c.PublicGlobalRateLimitPerMinute <= 0 {
+		c.PublicGlobalRateLimitPerMinute = defaultPublicGlobalRateLimit
+	}
+	if c.PublicMaxConcurrency <= 0 {
+		c.PublicMaxConcurrency = defaultPublicMaxConcurrency
 	}
 	if strings.TrimSpace(c.DatabasePath) == "" {
 		c.DatabasePath = filepath.Join(c.VolumeDir, "Data", "xhs.sqlite3")

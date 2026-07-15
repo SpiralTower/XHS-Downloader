@@ -59,6 +59,13 @@ func TestSQLiteInitializationLegacyImportAndRestart(t *testing.T) {
 	if migrationCount != 2 {
 		t.Fatalf("migration count = %d", migrationCount)
 	}
+	settings, err := app.store.loadSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Public || settings.Refetch {
+		t.Fatalf("new database security defaults = %#v", settings)
+	}
 	databasePath := app.config.DatabasePath
 	keyPath := app.config.SecretKeyPath
 	if err := app.Close(); err != nil {

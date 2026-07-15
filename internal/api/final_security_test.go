@@ -243,6 +243,7 @@ func TestLegacyMediaFailureReturnsOnlyStableCodeAndLogsCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Close()
+	enablePublicTestAccess(t, app)
 	pageRequests := 0
 	app.clientFactory = fixtureMediaClientFactory(fixture, jpeg, mp4, &pageRequests)
 	enabled := true
@@ -319,17 +320,20 @@ func TestMediaLimitRejectsChunkedAndExistingOversizedFiles(t *testing.T) {
 }
 
 func TestLegacyProxyFailureRedactsConnectionValues(t *testing.T) {
-	app := newTestApp(t)
+	app := newAdminTestApp(t)
+	cookie := loginAdmin(t, app)
 	secretProxy := "http://user:proxy-secret@127.0.0.1:8080"
 	secretCookie := "web_session=cookie-secret"
 	app.clientFactory = func(proxy *string) (*http.Client, error) {
 		return nil, fmt.Errorf("cannot use proxy %s", *proxy)
 	}
 	recorder := httptest.NewRecorder()
-	app.Handler().ServeHTTP(recorder, httptest.NewRequest(
+	request := httptest.NewRequest(
 		http.MethodPost, "/xhs/detail",
 		strings.NewReader(`{"url":"https://www.xiaohongshu.com/explore/fixture123","cookie":"`+secretCookie+`","proxy":"`+secretProxy+`"}`),
-	))
+	)
+	request.AddCookie(cookie)
+	app.Handler().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("proxy failure = %d %s", recorder.Code, recorder.Body.String())
 	}

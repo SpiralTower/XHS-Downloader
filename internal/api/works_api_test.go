@@ -57,6 +57,7 @@ func completeWorksAPICacheHit(t *testing.T, app *App, version storedVersion) {
 
 func TestPopularWorksHandlerSettingsCountsAndAccess(t *testing.T) {
 	app := newAdminTestApp(t)
+	enablePublicTestAccess(t, app)
 	version := seedWorksAPIWork(t, app, "popular-handler-work", "热门作品")
 	completeWorksAPICacheHit(t, app, version)
 

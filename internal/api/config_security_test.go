@@ -18,6 +18,9 @@ func clearRuntimeConfigEnv(t *testing.T) {
 		"XHS_ALLOW_PRIVATE_PROXY",
 		"XHS_MAX_BODY_BYTES",
 		"XHS_MAX_MEDIA_BYTES",
+		"XHS_PUBLIC_RATE_LIMIT_PER_MINUTE",
+		"XHS_PUBLIC_GLOBAL_RATE_LIMIT_PER_MINUTE",
+		"XHS_PUBLIC_MAX_CONCURRENCY",
 	} {
 		t.Setenv(name, "")
 	}
@@ -41,6 +44,15 @@ func TestConfigDownloadSecurityDefaults(t *testing.T) {
 	if config.MaxMediaBytes != defaultMaxMediaBytes {
 		t.Fatalf("MaxMediaBytes = %d", config.MaxMediaBytes)
 	}
+	if config.PublicRateLimitPerMinute != defaultPublicRateLimit {
+		t.Fatalf("PublicRateLimitPerMinute = %d", config.PublicRateLimitPerMinute)
+	}
+	if config.PublicGlobalRateLimitPerMinute != defaultPublicGlobalRateLimit {
+		t.Fatalf("PublicGlobalRateLimitPerMinute = %d", config.PublicGlobalRateLimitPerMinute)
+	}
+	if config.PublicMaxConcurrency != defaultPublicMaxConcurrency {
+		t.Fatalf("PublicMaxConcurrency = %d", config.PublicMaxConcurrency)
+	}
 }
 
 func TestConfigDownloadSecurityEnvironment(t *testing.T) {
@@ -49,6 +61,9 @@ func TestConfigDownloadSecurityEnvironment(t *testing.T) {
 	t.Setenv("XHS_DOWNLOAD_IDLE_TIMEOUT", "75s")
 	t.Setenv("XHS_ALLOW_PRIVATE_PROXY", "true")
 	t.Setenv("XHS_MAX_MEDIA_BYTES", "12345")
+	t.Setenv("XHS_PUBLIC_RATE_LIMIT_PER_MINUTE", "7")
+	t.Setenv("XHS_PUBLIC_GLOBAL_RATE_LIMIT_PER_MINUTE", "70")
+	t.Setenv("XHS_PUBLIC_MAX_CONCURRENCY", "3")
 
 	config, err := ConfigFromEnv()
 	if err != nil {
@@ -66,6 +81,15 @@ func TestConfigDownloadSecurityEnvironment(t *testing.T) {
 	if config.MaxMediaBytes != 12345 {
 		t.Fatalf("MaxMediaBytes = %d", config.MaxMediaBytes)
 	}
+	if config.PublicRateLimitPerMinute != 7 {
+		t.Fatalf("PublicRateLimitPerMinute = %d", config.PublicRateLimitPerMinute)
+	}
+	if config.PublicGlobalRateLimitPerMinute != 70 {
+		t.Fatalf("PublicGlobalRateLimitPerMinute = %d", config.PublicGlobalRateLimitPerMinute)
+	}
+	if config.PublicMaxConcurrency != 3 {
+		t.Fatalf("PublicMaxConcurrency = %d", config.PublicMaxConcurrency)
+	}
 }
 
 func TestConfigRejectsInvalidDownloadSecurityEnvironment(t *testing.T) {
@@ -80,6 +104,12 @@ func TestConfigRejectsInvalidDownloadSecurityEnvironment(t *testing.T) {
 		{"XHS_ALLOW_PRIVATE_PROXY", "sometimes"},
 		{"XHS_MAX_MEDIA_BYTES", "0"},
 		{"XHS_MAX_MEDIA_BYTES", "invalid"},
+		{"XHS_PUBLIC_RATE_LIMIT_PER_MINUTE", "0"},
+		{"XHS_PUBLIC_RATE_LIMIT_PER_MINUTE", "invalid"},
+		{"XHS_PUBLIC_GLOBAL_RATE_LIMIT_PER_MINUTE", "-1"},
+		{"XHS_PUBLIC_GLOBAL_RATE_LIMIT_PER_MINUTE", "invalid"},
+		{"XHS_PUBLIC_MAX_CONCURRENCY", "0"},
+		{"XHS_PUBLIC_MAX_CONCURRENCY", "invalid"},
 	}
 	for _, test := range tests {
 		t.Run(test.name+"="+test.value, func(t *testing.T) {

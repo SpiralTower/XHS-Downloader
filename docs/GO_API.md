@@ -45,6 +45,8 @@ go run ./cmd/api
 - OpenAPI：<http://127.0.0.1:5556/openapi.json>
 - 健康检查：<http://127.0.0.1:5556/healthz>
 
+新数据库默认关闭公共访问和“已有记录时重新抓取”。管理员登录后可按部署需要显式开启；已有数据库的设置不会被迁移覆盖。
+
 前端热更新：
 
 ~~~bash
@@ -63,7 +65,7 @@ POST /api/v1/extractions
 Content-Type: application/json
 ~~~
 
-请求示例：
+已登录管理员的请求级连接覆盖示例：
 
 ~~~json
 {
@@ -75,14 +77,16 @@ Content-Type: application/json
 }
 ~~~
 
-`connection.cookie` 与 `connection.proxy` 的语义相同：
+匿名请求必须省略 `connection.cookie` 和 `connection.proxy`（包括显式 `null`）；它们会继承管理端默认连接。请求级覆盖只对已登录、同源的管理员开放。
+
+管理员请求中的 `connection.cookie` 与 `connection.proxy` 语义相同：
 
 - 省略字段：继承管理端配置的默认值。
 - 非空字符串：仅覆盖本次请求。
 - 显式 `null`：本次禁用对应默认值，并且不使用持久缓存。
 - 空字符串：请求无效。
 
-请求级 Cookie 和代理不会写入解析历史，也不会在响应中回显。响应只说明连接来源是 `none`、`default`、`override` 或 `disabled`。
+请求级 Cookie 和代理不会写入解析历史，也不会在响应中回显。响应只说明连接来源是 `none`、`default`、`override` 或 `disabled`；匿名请求尝试覆盖时返回 HTTP 403。
 
 用户接口没有下载开关。每次解析是否保存文案、图片、视频，以及是否重新抓取，完全由管理端设置控制。只有 Cookie/代理来源均为默认值或未配置时才使用持久缓存；请求级覆盖或显式 `null`（disabled）都会绕过它，解析记录与作品内容版本仍会写入 SQLite。
 
@@ -113,7 +117,7 @@ Content-Type: application/json
 - `download=true`：保存策略为“管理端允许的类别”与“本次允许下载”的交集。例如管理端只开启图片时，本次也只保存图片。
 - `index`：仅在 `download=true` 时筛选图文作品的静态图片及对应实况视频，序号从 1 开始，可用整数或整数字符串；普通视频作品忽略该参数。为空时选择全部。
 - `skip=true`：存在兼容下载记录时跳过作品处理。
-- 非空 `cookie`、`proxy`：仅覆盖本次请求；省略、空字符串或 `null` 时继承管理端默认值。
+- 已登录同源管理员可用非空 `cookie`、`proxy` 覆盖本次请求；匿名请求携带非空值时返回 HTTP 403。省略、空字符串或 `null` 时继承管理端默认值。
 
 `download` 只控制本次资源保存，不改变管理端的“已有版本是否重新抓取”策略。每次有效请求仍会形成解析记录。
 
@@ -135,8 +139,11 @@ SQLite 记录资源类别、序号、状态、MIME、大小与 SHA-256。管理 
 
 ## 访问与代理安全
 
-- 管理端开启公共访问时，匿名用户可以使用用户端和解析 API。
-- 关闭公共访问后，静态页面仍可加载，但解析需要已登录的同源管理员会话。
+- 新数据库默认关闭公共访问；管理员必须显式开启后，匿名用户才能使用用户端和解析 API。
+- 匿名解析按 TCP 来源限制为每分钟 12 次（IPv4 按地址、IPv6 按 /64），整个实例每分钟 120 次，最多并发 4 个；超出时返回 HTTP 429 和 `Retry-After`。已登录管理员使用独立容量。
+- `POST /api/v1/extractions` 与 `POST /xhs/detail` 共享匿名额度；不要默认信任 `X-Forwarded-For`。
+- 关闭公共访问后，静态页面仍可加载，但解析需要管理员会话；所有携带有效管理员会话的解析请求都必须同源。
+- 匿名用户不能覆盖或禁用默认 Cookie/代理；请求级覆盖仅限已登录同源管理员。
 - 代理仅支持 `http://` 与 `https://`。
 - 默认拒绝解析到私网、回环或链路本地地址的代理。
 - `XHS_ALLOW_PRIVATE_PROXY=true` 只适用于受信本地环境，不应在公开服务中开启。
@@ -163,6 +170,9 @@ SQLite 记录资源类别、序号、状态、MIME、大小与 SHA-256。管理 
 | `XHS_ALLOW_PRIVATE_PROXY` | `false` | 是否允许代理解析到非公网地址 |
 | `XHS_MAX_BODY_BYTES` | `1048576` | API 请求体上限 |
 | `XHS_MAX_MEDIA_BYTES` | `2147483648` | 每个图片或视频资源的保存上限 |
+| `XHS_PUBLIC_RATE_LIMIT_PER_MINUTE` | `12` | 每个 TCP 来源每分钟允许的匿名解析数；IPv6 按 /64 归并 |
+| `XHS_PUBLIC_GLOBAL_RATE_LIMIT_PER_MINUTE` | `120` | 整个实例每分钟允许的匿名解析总数 |
+| `XHS_PUBLIC_MAX_CONCURRENCY` | `4` | 匿名解析的非排队式全局并发上限 |
 
 生产环境通过 HTTPS 反向代理访问时必须设置：
 

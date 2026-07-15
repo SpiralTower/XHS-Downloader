@@ -115,11 +115,11 @@
 <ol>
 <li>复制 <code>.env.example</code> 为 <code>.env</code>，至少设置强且唯一的 <code>XHS_ADMIN_PASSWORD</code></li>
 <li>运行 <code>docker compose up --build -d</code> 构建并启动服务</li>
-<li>访问 <code>http://127.0.0.1:5556/</code> 使用用户端，访问 <code>/admin/login</code> 登录管理端</li>
+<li>先访问 <code>/admin/login</code> 登录管理端；新数据库默认关闭公开解析，如需匿名用户端再到设置中显式开启</li>
 <li>运行 <code>docker compose logs -f api</code> 查看日志</li>
 <li>运行 <code>docker compose down</code> 停止服务；SQLite、加密密钥和下载文件保存在命名卷 <code>xhs-volume</code></li>
 </ol>
-<p><strong>部署约束：</strong>仅运行一个应用实例并始终挂载同一个卷，不要扩容多个副本；同卷第二实例会因 <code>.xhs-downloader.lock</code> 冲突退出；<code>XHS_DATABASE_PATH</code> 必须位于 <code>XHS_VOLUME_DIR</code> 内。生产 HTTPS 必须设置 <code>XHS_SESSION_COOKIE_SECURE=true</code>。外置只读密钥、备份和完整变量说明见 <a href="docs/GO_API.md">Go API 部署文档</a>。</p>
+<p><strong>部署约束：</strong>仅运行一个应用实例并始终挂载同一个卷，不要扩容多个副本；同卷第二实例会因 <code>.xhs-downloader.lock</code> 冲突退出；<code>XHS_DATABASE_PATH</code> 必须位于 <code>XHS_VOLUME_DIR</code> 内。生产 HTTPS 必须设置 <code>XHS_SESSION_COOKIE_SECURE=true</code>。匿名解析默认每来源 12 次/分钟、全局 120 次/分钟、并发 4 个，管理员使用独立容量。外置只读密钥、备份和完整变量说明见 <a href="docs/GO_API.md">Go API 部署文档</a>。</p>
 <p>也可以直接运行：<code>docker build -t xhs-downloader:local .</code>，然后执行 <code>docker run --rm -p 5556:5556 --env-file .env -v xhs-volume:/app/Volume xhs-downloader:local</code>。</p>
 <h1>🛠 命令行模式</h1>
 <p>项目支持命令行运行模式，若想要下载图文作品的部分图片，可以使用此模式设置需要下载的图片序号！</p>
@@ -139,8 +139,8 @@
 <h2>Go API 模式</h2>
 <p><b>启动：</b>设置 <code>XHS_ADMIN_PASSWORD</code>，运行前端测试与构建后再执行 <code>go run ./cmd/api</code></p>
 <p><b>关闭：</b>按下 <code>Ctrl</code> + <code>C</code> 关闭服务器</p>
-<p>访问 <code>http://127.0.0.1:5556/</code> 使用用户端，访问 <code>/admin/login</code> 登录管理端；<code>/docs</code> 和 <code>/openapi.json</code> 提供 API 说明。</p>
-<p>新客户端推荐使用 <code>POST /api/v1/extractions</code>；它只接受链接和可选的本次连接覆盖，保存与重新抓取策略由管理端控制。旧 Python API 入口仍保留，但不再是 Docker 默认服务。</p>
+<p>访问 <code>/admin/login</code> 登录管理端；新数据库默认关闭公开解析和重复抓取，管理员可在设置中显式开启。<code>/docs</code> 和 <code>/openapi.json</code> 提供 API 说明。</p>
+<p>新客户端推荐使用 <code>POST /api/v1/extractions</code>；匿名请求只接受链接，请求级 Cookie/代理覆盖仅限已登录同源管理员，保存与重新抓取策略由管理端控制。旧 Python API 入口仍保留，但不再是 Docker 默认服务。</p>
 <p><b>兼容请求接口：</b><code>/xhs/detail</code></p>
 <p><b>请求方法：</b><code>POST</code></p>
 <p><b>请求格式：</b><code>JSON</code></p>
@@ -193,10 +193,11 @@
 </tr>
 </tbody>
 </table>
-<p><b>保存语义：</b><code>download</code> 只控制兼容接口本次是否允许落盘，实际保存类别仍受管理端开关限制；<code>download=false</code> 不保存。Cookie 和代理仅用于本次请求，并会从响应参数中清除。<code>download=true</code> 时即使部分资源保存失败也继续返回作品数据，并在 <code>data.下载错误</code> 中提供稳定错误码，不回显原始网络或文件错误。</p>
+<p><b>保存语义：</b><code>download</code> 只控制兼容接口本次是否允许落盘，实际保存类别仍受管理端开关限制；<code>download=false</code> 不保存。请求级 Cookie 和代理仅限已登录同源管理员，并会从响应参数中清除。<code>download=true</code> 时即使部分资源保存失败也继续返回作品数据，并在 <code>data.下载错误</code> 中提供稳定错误码，不回显原始网络或文件错误。</p>
 <p><b>资源上限：</b><code>XHS_MAX_MEDIA_BYTES</code> 默认限制每个保存的图片或视频为 2 GiB。管理端、SQLite、只读 Secret 与单实例运维详见 <a href="docs/ADMIN_WEB.md">管理端说明</a>。</p>
 <p><b>代理安全：</b>Go API 默认拒绝解析到私网、回环或链路本地地址的代理。仅在受信本地环境需要私网代理时设置 <code>XHS_ALLOW_PRIVATE_PROXY=true</code>，不要在公开服务中开启。</p>
-<p><b>代码示例：</b></p>
+<p><b>公开访问：</b>新数据库默认关闭；开启后两个解析入口共享匿名速率和并发限制，HTTP 429 会携带 <code>Retry-After</code>。</p>
+<p><b>代码示例：</b>需先由管理员开启公开解析；匿名示例不携带 Cookie 或代理覆盖。</p>
 <pre>
 async def example_api():
     """通过 API 设置参数，适合二次开发"""
@@ -209,7 +210,6 @@ async def example_api():
             6,
             9,
         ],
-        "proxy": "http://127.0.0.1:10808",
     }
     response = post(server, json=data, timeout=10)
     print(response.json())

@@ -106,8 +106,8 @@ func TestAdminSessionSettingsEncryptionAndPublicBoundary(t *testing.T) {
 	if err := json.Unmarshal(settingsRecorder.Body.Bytes(), &defaults); err != nil {
 		t.Fatal(err)
 	}
-	if defaults.Revision != 1 || !defaults.Public || defaults.ShowPopular || defaults.Save.Text ||
-		defaults.Save.Images || defaults.Save.Videos || !defaults.Refetch {
+	if defaults.Revision != 1 || defaults.Public || defaults.ShowPopular || defaults.Save.Text ||
+		defaults.Save.Images || defaults.Save.Videos || defaults.Refetch {
 		t.Fatalf("default settings = %#v", defaults)
 	}
 
@@ -248,6 +248,40 @@ func TestAdminLoginRateLimit(t *testing.T) {
 	}
 }
 
+func TestRateLimitSourceKeyNormalizesAddressesAndGroupsIPv6Prefixes(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		expected   string
+	}{
+		{name: "ipv4 first", remoteAddr: "192.0.2.1:4000", expected: "192.0.2.1"},
+		{name: "ipv4 neighbor", remoteAddr: "192.0.2.250:5000", expected: "192.0.2.250"},
+		{name: "ipv6 first", remoteAddr: "[2001:db8:abcd:1::1]:4000", expected: "2001:db8:abcd:1::/64"},
+		{name: "ipv6 neighbor", remoteAddr: "[2001:db8:abcd:1::ffff]:5000", expected: "2001:db8:abcd:1::/64"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"http://example.test/api/admin/v1/auth/session",
+				nil,
+			)
+			request.RemoteAddr = test.remoteAddr
+			request.Header.Set("X-Forwarded-For", "203.0.113.99")
+			if key := rateLimitSourceKey(request); key != test.expected {
+				t.Fatalf("rate limit source key = %q, want %q", key, test.expected)
+			}
+		})
+	}
+	first := httptest.NewRequest(http.MethodPost, "http://example.test", nil)
+	first.RemoteAddr = "192.0.2.1:4000"
+	second := httptest.NewRequest(http.MethodPost, "http://example.test", nil)
+	second.RemoteAddr = "192.0.2.250:4000"
+	if rateLimitSourceKey(first) == rateLimitSourceKey(second) {
+		t.Fatal("distinct IPv4 addresses shared a login limiter key")
+	}
+}
+
 func TestAdminLoginLimiterIsHostScopedAndBounded(t *testing.T) {
 	app := newAdminTestApp(t)
 	for attempt := 0; attempt < 100; attempt++ {
@@ -281,6 +315,41 @@ func TestAdminLoginLimiterIsHostScopedAndBounded(t *testing.T) {
 	}
 	if !limiter.reserve("new-host", now.Add(6*time.Minute)) {
 		t.Fatal("expired limiter entries were not cleared")
+	}
+}
+
+func TestAdminLoginLimiterFailsClosedAndPreservesBlocksAtCapacity(t *testing.T) {
+	limiter := newAdminLoginLimiter()
+	now := time.Now().UTC()
+	for attempt := 0; attempt < 5; attempt++ {
+		if !limiter.reserve("192.0.2.10", now) {
+			t.Fatalf("victim attempt %d was rejected before the configured threshold", attempt+1)
+		}
+	}
+	if limiter.reserve("192.0.2.10", now) {
+		t.Fatal("victim was not blocked after five failures")
+	}
+	for index := 0; index < maxLoginLimiterEntries-1; index++ {
+		key := fmt.Sprintf("198.51.100.%d", index)
+		if !limiter.reserve(key, now.Add(time.Duration(index+1)*time.Nanosecond)) {
+			t.Fatalf("filler key %q was unexpectedly rejected", key)
+		}
+	}
+	if limiter.reserve("203.0.113.250", now.Add(time.Second)) {
+		t.Fatal("a new key was admitted by evicting live limiter state")
+	}
+	if limiter.reserve("192.0.2.10", now.Add(2*time.Second)) {
+		t.Fatal("capacity pressure removed an active login block")
+	}
+	limiter.mu.Lock()
+	victim, exists := limiter.attempts["192.0.2.10"]
+	entries := len(limiter.attempts)
+	limiter.mu.Unlock()
+	if !exists || !now.Add(2*time.Second).Before(victim.BlockedUntil) {
+		t.Fatalf("active victim block was not retained: %#v", victim)
+	}
+	if entries != maxLoginLimiterEntries {
+		t.Fatalf("limiter entries = %d, want %d", entries, maxLoginLimiterEntries)
 	}
 }
 

@@ -44,11 +44,14 @@ func openAPIDocument() map[string]any {
 			"/api/v1/extractions": map[string]any{
 				"post": map[string]any{
 					"summary":     "解析作品并按管理策略记录版本和资源",
+					"description": "匿名请求只可提交作品链接，并受每来源、全局速率和并发限制；connection 覆盖仅限已登录同源管理员。",
 					"security":    publicOrAdminSecurity,
 					"requestBody": requestBody("#/components/schemas/ExtractionRequest"),
 					"responses": map[string]any{
 						"200": jsonResponse("解析结果", map[string]any{"$ref": "#/components/schemas/ExtractionResponse"}),
 						"401": jsonResponse("未开放匿名解析或需要登录", map[string]any{"$ref": "#/components/schemas/APIError"}),
+						"403": jsonResponse("连接覆盖无权限或管理员请求非同源", map[string]any{"$ref": "#/components/schemas/APIError"}),
+						"429": jsonResponse("匿名解析达到速率或并发上限", map[string]any{"$ref": "#/components/schemas/APIError"}),
 						"422": jsonResponse("请求参数无效", map[string]any{"$ref": "#/components/schemas/APIError"}),
 						"502": jsonResponse("上游获取或解析失败", map[string]any{"$ref": "#/components/schemas/APIError"}),
 					},
@@ -149,13 +152,15 @@ func openAPIDocument() map[string]any {
 			"/xhs/detail": map[string]any{
 				"post": map[string]any{
 					"summary":     "旧版兼容解析入口",
-					"description": "已弃用。只有 download=true 且管理员开启对应文案/图片/视频类别时才保存；download=false 仅解析。index 为 1 起始并限制图文/动图保存项。保存失败时 data.下载错误仅包含本次失败资源的稳定错误码；Cookie 和代理始终脱敏。新客户端应使用 /api/v1/extractions。",
+					"description": "已弃用。只有 download=true 且管理员开启对应文案/图片/视频类别时才保存；download=false 仅解析。index 为 1 起始并限制图文/动图保存项。请求级 Cookie/代理仅限已登录同源管理员且始终脱敏。新客户端应使用 /api/v1/extractions。",
 					"deprecated":  true,
 					"security":    publicOrAdminSecurity,
 					"requestBody": requestBody("#/components/schemas/LegacyExtractParams"),
 					"responses": map[string]any{
 						"200": jsonResponse("兼容响应", map[string]any{"$ref": "#/components/schemas/LegacyExtractResponse"}),
 						"401": response("未开放匿名解析"),
+						"403": response("连接覆盖无权限或管理员请求非同源"),
+						"429": response("匿名解析达到速率或并发上限"),
 						"422": response("请求参数无效"),
 					},
 				},
@@ -179,8 +184,8 @@ func openAPIDocument() map[string]any {
 				"ConnectionOverrides": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"cookie": map[string]any{"type": []string{"string", "null"}, "writeOnly": true, "description": "省略继承默认值；null 禁用默认值；字符串仅覆盖本次请求。任何显式覆盖（含 null）都不使用持久缓存。"},
-						"proxy":  map[string]any{"type": []string{"string", "null"}, "writeOnly": true, "description": "省略继承默认值；显式覆盖仅用于本次请求且不使用持久缓存。"},
+						"cookie": map[string]any{"type": []string{"string", "null"}, "writeOnly": true, "description": "仅限已登录同源管理员。省略继承默认值；null 禁用默认值；字符串仅覆盖本次请求。任何显式覆盖（含 null）都不使用持久缓存。"},
+						"proxy":  map[string]any{"type": []string{"string", "null"}, "writeOnly": true, "description": "仅限已登录同源管理员。省略继承默认值；显式覆盖仅用于本次请求且不使用持久缓存。"},
 					},
 				},
 				"ExtractionRequest": map[string]any{
@@ -263,7 +268,7 @@ func openAPIDocument() map[string]any {
 					"properties": map[string]any{
 						"url": map[string]any{"type": "string", "maxLength": maxRequestedURLBytes}, "download": map[string]any{"type": "boolean", "default": false, "description": "仅 true 时允许按管理员开启的类别保存；false 不保存。"},
 						"index":  map[string]any{"type": []string{"array", "null"}, "description": "download=true 时按 1 起始选择图文图片及同序号动图；不影响视频作品。", "items": map[string]any{"oneOf": []any{map[string]any{"type": "integer", "minimum": 1}, map[string]any{"type": "string", "pattern": "^[1-9][0-9]*$"}}}},
-						"cookie": map[string]any{"type": []string{"string", "null"}, "writeOnly": true}, "proxy": map[string]any{"type": []string{"string", "null"}, "writeOnly": true}, "skip": map[string]any{"type": "boolean"},
+						"cookie": map[string]any{"type": []string{"string", "null"}, "writeOnly": true, "description": "非空覆盖仅限已登录同源管理员。"}, "proxy": map[string]any{"type": []string{"string", "null"}, "writeOnly": true, "description": "非空覆盖仅限已登录同源管理员。"}, "skip": map[string]any{"type": "boolean"},
 					},
 				},
 				"LegacyExtractResponse": map[string]any{
@@ -283,13 +288,13 @@ const docsHTML = `<!doctype html>
 <title>XHS-Downloader API</title><style>
 body{max-width:920px;margin:0 auto;padding:48px 24px;font:16px/1.65 system-ui;color:#18181b;background:#fafafa}h1{font-size:38px;letter-spacing:-.03em}section{background:#fff;border:1px solid #e4e4e7;border-radius:18px;padding:24px;margin:20px 0}code,pre{font-family:ui-monospace,monospace}pre{overflow:auto;background:#18181b;color:#f4f4f5;padding:18px;border-radius:12px}a{color:#e11d48}
 </style></head><body><h1>XHS-Downloader Go API</h1>
-<p>用户端、管理端与 SQLite 版本历史由同一 Go 服务提供。管理会话使用同源 HttpOnly Cookie。</p>
-<section><h2>用户解析</h2><p><code>POST /api/v1/extractions</code> 只接受作品链接和可选的本次 Cookie / 代理覆盖值；保存与重新抓取策略由管理端控制。</p>
+<p>用户端、管理端与 SQLite 版本历史由同一 Go 服务提供。新数据库默认关闭公共访问和重复抓取；管理会话使用同源 HttpOnly Cookie。</p>
+<section><h2>用户解析</h2><p><code>POST /api/v1/extractions</code> 的匿名请求只接受作品链接并受速率/并发限制；请求级 Cookie / 代理覆盖仅限已登录同源管理员。</p>
 <pre>curl -X POST http://127.0.0.1:5556/api/v1/extractions \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://www.xiaohongshu.com/explore/作品ID"}'</pre></section>
-<section><h2>管理端</h2><p><code>/admin/login</code> 登录后可管理默认连接、公共访问、首页热门榜单、文案/图片/视频保存策略，并查看作品统计、缩略图和版本历史。</p>
-<p>环境变量 <code>XHS_ADMIN_PASSWORD</code> 或 <code>XHS_ADMIN_PASSWORD_FILE</code> 必须在生产启动时显式配置；<code>XHS_MAX_MEDIA_BYTES</code> 限制单个媒体资源大小。</p>
+<section><h2>管理端</h2><p><code>/admin/login</code> 登录后可管理默认连接、公共访问、首页热门榜单、文案/图片/视频保存策略，并查看作品统计、缩略图和版本历史。公开访问必须由管理员显式开启。</p>
+<p>环境变量 <code>XHS_ADMIN_PASSWORD</code> 或 <code>XHS_ADMIN_PASSWORD_FILE</code> 必须在生产启动时显式配置；匿名额度可通过 <code>XHS_PUBLIC_*</code> 变量调整。</p>
 <p>旧接口 <code>/xhs/detail</code> 只有在 <code>download=true</code> 且管理员开启对应类别时保存；失败仅返回稳定错误码。</p></section>
 <section><h2>接口定义</h2><p><a href="/openapi.json">OpenAPI 3.1 JSON</a> · <a href="/healthz">健康检查</a> · <a href="/">用户端</a> · <a href="/admin/login">管理端</a></p></section>
 </body></html>`

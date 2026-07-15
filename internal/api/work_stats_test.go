@@ -103,6 +103,9 @@ func TestMigrationV2BackfillsRetainedSuccessfulRuns(t *testing.T) {
 	if settings.ShowPopular {
 		t.Fatal("show_popular should default to false")
 	}
+	if !settings.Public || !settings.Refetch {
+		t.Fatalf("existing settings were overwritten: %#v", settings)
+	}
 	var parseCount, lastParsedAt int64
 	if err := store.db.QueryRow(`
 		SELECT parse_count, last_parsed_at FROM works WHERE id = ?

@@ -204,7 +204,7 @@ export default function AdminSettingsPage() {
               <Fieldset className="grid gap-2">
                 <Fieldset.Legend className="sr-only">访问策略</Fieldset.Legend>
                 <SettingSwitch
-                  description="关闭后匿名解析需登录"
+                  description="默认关闭；开启后匿名请求受限流，并按当前保存策略处理"
                   isDisabled={isSaving}
                   isSelected={draft.public}
                   label="允许公开解析"

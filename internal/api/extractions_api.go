@@ -142,7 +142,9 @@ func (a *App) handleExtractionsV1(writer http.ResponseWriter, request *http.Requ
 	if !ok {
 		return
 	}
-	_ = authenticated
+	if !a.allowAnonymousExtraction(writer, request, authenticated) {
+		return
+	}
 
 	request.Body = http.MaxBytesReader(writer, request.Body, a.config.MaxBodyBytes)
 	var input extractionV1Request
@@ -164,6 +166,11 @@ func (a *App) handleExtractionsV1(writer http.ResponseWriter, request *http.Requ
 		cookieOverride = input.Connection.Cookie
 		proxyOverride = input.Connection.Proxy
 	}
+	if !allowConnectionOverrides(
+		writer, request, authenticated, cookieOverride.Present || proxyOverride.Present,
+	) {
+		return
+	}
 	cookie, cookieSource, err := effectiveConnectionValue(settings.DefaultCookie, cookieOverride, true)
 	if err != nil {
 		writeAPIError(writer, http.StatusUnprocessableEntity, "INVALID_COOKIE", err.Error())
@@ -174,9 +181,15 @@ func (a *App) handleExtractionsV1(writer http.ResponseWriter, request *http.Requ
 		writeAPIError(writer, http.StatusUnprocessableEntity, "INVALID_PROXY", err.Error())
 		return
 	}
+	release, ok := a.beginAnonymousExtractionWork(writer, authenticated)
+	if !ok {
+		return
+	}
+	defer release()
 	outcome, problem := a.performExtraction(
 		request.Context(), requestedURL, cookie, proxy, cookieSource, proxySource, settings, false, nil,
 	)
+	release()
 	if problem != nil {
 		writeAPIError(writer, problem.Status, problem.Code, problem.Message)
 		return
@@ -198,17 +211,41 @@ func (a *App) authorizeExtraction(
 		writeAPIError(writer, http.StatusInternalServerError, "SESSION_CHECK_FAILED", "无法校验管理员会话")
 		return runtimeSettings{}, false, false
 	}
+	if authenticated && !sameOriginRequest(request) {
+		writeAPIError(writer, http.StatusForbidden, "ORIGIN_NOT_ALLOWED", "请求来源不受信任")
+		return runtimeSettings{}, false, false
+	}
 	if !settings.Public {
 		if !authenticated {
 			writeAPIError(writer, http.StatusUnauthorized, "PUBLIC_ACCESS_DISABLED", "当前服务未开放匿名解析")
 			return runtimeSettings{}, false, false
 		}
-		if !sameOriginRequest(request) {
-			writeAPIError(writer, http.StatusForbidden, "ORIGIN_NOT_ALLOWED", "请求来源不受信任")
-			return runtimeSettings{}, false, false
-		}
 	}
 	return settings, authenticated, true
+}
+
+func allowConnectionOverrides(
+	writer http.ResponseWriter,
+	request *http.Request,
+	authenticated, requested bool,
+) bool {
+	if !requested {
+		return true
+	}
+	if !authenticated {
+		writeAPIError(
+			writer, http.StatusForbidden, "CONNECTION_OVERRIDE_FORBIDDEN",
+			"匿名解析不能覆盖 Cookie 或代理，请先登录管理员账户",
+		)
+		return false
+	}
+	if !sameOriginRequest(request) {
+		writeAPIError(
+			writer, http.StatusForbidden, "ORIGIN_NOT_ALLOWED", "请求来源不受信任",
+		)
+		return false
+	}
+	return true
 }
 
 func effectiveConnectionValue(
@@ -513,8 +550,11 @@ func (a *App) handleLegacyExtraction(writer http.ResponseWriter, request *http.R
 		methodNotAllowed(writer, http.MethodPost)
 		return
 	}
-	settings, _, ok := a.authorizeExtraction(writer, request)
+	settings, authenticated, ok := a.authorizeExtraction(writer, request)
 	if !ok {
+		return
+	}
+	if !a.allowAnonymousExtraction(writer, request, authenticated) {
 		return
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, a.config.MaxBodyBytes)
@@ -537,6 +577,12 @@ func (a *App) handleLegacyExtraction(writer http.ResponseWriter, request *http.R
 		})
 		return
 	}
+	connectionOverride :=
+		(params.Cookie != nil && strings.TrimSpace(*params.Cookie) != "") ||
+			(params.Proxy != nil && strings.TrimSpace(*params.Proxy) != "")
+	if !allowConnectionOverrides(writer, request, authenticated, connectionOverride) {
+		return
+	}
 	cookie, cookieSource := legacyConnectionValue(settings.DefaultCookie, params.Cookie)
 	proxy, proxySource := legacyConnectionValue(settings.DefaultProxy, params.Proxy)
 	legacySettings := settings
@@ -547,10 +593,16 @@ func (a *App) handleLegacyExtraction(writer http.ResponseWriter, request *http.R
 	if params.Download {
 		persistenceIndexes = params.Index
 	}
+	release, ok := a.beginAnonymousExtractionWork(writer, authenticated)
+	if !ok {
+		return
+	}
+	defer release()
 	outcome, problem := a.performExtraction(
 		request.Context(), params.URL, cookie, proxy, cookieSource, proxySource,
 		legacySettings, params.Skip, persistenceIndexes,
 	)
+	release()
 	sanitized := params
 	sanitized.Cookie = nil
 	sanitized.Proxy = nil

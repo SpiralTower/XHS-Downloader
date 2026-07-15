@@ -43,18 +43,35 @@ func fixtureClientFactory(
 }
 
 func postExtraction(t *testing.T, app *App, body string) *httptest.ResponseRecorder {
+	return postExtractionWithCookie(t, app, body, nil)
+}
+
+func postExtractionWithCookie(
+	t *testing.T,
+	app *App,
+	body string,
+	cookie *http.Cookie,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(
 		http.MethodPost, "/api/v1/extractions", strings.NewReader(body),
 	)
 	request.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		request.AddCookie(cookie)
+	}
 	app.Handler().ServeHTTP(recorder, request)
 	return recorder
 }
 
 func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
-	app := newTestApp(t)
+	app := newAdminTestApp(t)
+	cookie := loginAdmin(t, app)
+	post := func(body string) *httptest.ResponseRecorder {
+		t.Helper()
+		return postExtractionWithCookie(t, app, body, cookie)
+	}
 	fixture, err := os.ReadFile(filepath.Join("testdata", "note.html"))
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +86,7 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 	)
 
 	secretCookie := "web_session=request-secret"
-	first := postExtraction(t, app, `{
+	first := post(`{
 		"url":"https://www.xiaohongshu.com/explore/fixture123?xsec_token=one",
 		"connection":{"cookie":"web_session=request-secret"}
 	}`)
@@ -102,7 +119,7 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second := postExtraction(t, app, `{
+	second := post(`{
 		"url":"https://www.xiaohongshu.com/discovery/item/fixture123?xsec_token=two",
 		"connection":{"cookie":"web_session=request-secret"}
 	}`)
@@ -130,7 +147,7 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 	if scopeCount != 0 {
 		t.Fatalf("override requests created %d persistent cache scopes", scopeCount)
 	}
-	third := postExtraction(t, app, `{
+	third := post(`{
 		"url":"https://www.xiaohongshu.com/explore/fixture123?xsec_token=three",
 		"connection":{"cookie":null}
 	}`)
@@ -146,7 +163,7 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 		thirdResponse.Version.ID != firstResponse.Version.ID {
 		t.Fatalf("cross-scope response = %#v", thirdResponse)
 	}
-	fourth := postExtraction(t, app, `{
+	fourth := post(`{
 		"url":"https://www.xiaohongshu.com/explore/fixture123?xsec_token=four",
 		"connection":{"cookie":null}
 	}`)
@@ -166,7 +183,7 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 	if scopeCount != 0 {
 		t.Fatalf("request overrides created %d persistent cache scopes", scopeCount)
 	}
-	fifth := postExtraction(t, app, `{"url":"https://www.xiaohongshu.com/explore/fixture123"}`)
+	fifth := post(`{"url":"https://www.xiaohongshu.com/explore/fixture123"}`)
 	if fifth.Code != http.StatusOK {
 		t.Fatalf("first no-connection extraction = %d %s", fifth.Code, fifth.Body.String())
 	}
@@ -177,7 +194,7 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 	if fifthResponse.Source != "fetched" || fifthResponse.Version.ID != firstResponse.Version.ID {
 		t.Fatalf("first no-connection response = %#v", fifthResponse)
 	}
-	sixth := postExtraction(t, app, `{"url":"https://www.xiaohongshu.com/explore/fixture123"}`)
+	sixth := post(`{"url":"https://www.xiaohongshu.com/explore/fixture123"}`)
 	if sixth.Code != http.StatusOK {
 		t.Fatalf("cached no-connection extraction = %d %s", sixth.Code, sixth.Body.String())
 	}
@@ -214,8 +231,78 @@ func TestExtractionVersionsCanonicalizeLinksAndUseCache(t *testing.T) {
 	}
 }
 
+func TestAnonymousConnectionOverridesAreForbidden(t *testing.T) {
+	app := newTestApp(t)
+	app.clientFactory = func(*string) (*http.Client, error) {
+		t.Fatal("forbidden connection override reached the client factory")
+		return nil, nil
+	}
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "v1 cookie", path: "/api/v1/extractions", body: `{"url":"https://www.xiaohongshu.com/explore/fixture123","connection":{"cookie":"session=attacker"}}`},
+		{name: "v1 cookie disabled", path: "/api/v1/extractions", body: `{"url":"https://www.xiaohongshu.com/explore/fixture123","connection":{"cookie":null}}`},
+		{name: "v1 proxy", path: "/api/v1/extractions", body: `{"url":"https://www.xiaohongshu.com/explore/fixture123","connection":{"proxy":"http://203.0.113.10:8080"}}`},
+		{name: "v1 proxy disabled", path: "/api/v1/extractions", body: `{"url":"https://www.xiaohongshu.com/explore/fixture123","connection":{"proxy":null}}`},
+		{name: "legacy cookie", path: "/xhs/detail", body: `{"url":"https://www.xiaohongshu.com/explore/fixture123","cookie":"session=attacker"}`},
+		{name: "legacy proxy", path: "/xhs/detail", body: `{"url":"https://www.xiaohongshu.com/explore/fixture123","proxy":"http://203.0.113.10:8080"}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			app.Handler().ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden ||
+				!strings.Contains(recorder.Body.String(), `"code":"CONNECTION_OVERRIDE_FORBIDDEN"`) {
+				t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+	var runCount int
+	if err := app.store.db.QueryRow("SELECT COUNT(*) FROM parse_runs").Scan(&runCount); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 0 {
+		t.Fatalf("forbidden overrides created %d parse runs", runCount)
+	}
+}
+
+func TestAuthenticatedExtractionRequiresSameOriginInPublicMode(t *testing.T) {
+	app := newAdminTestApp(t)
+	enablePublicTestAccess(t, app)
+	cookie := loginAdmin(t, app)
+	app.clientFactory = func(*string) (*http.Client, error) {
+		t.Fatal("cross-origin authenticated extraction reached the client factory")
+		return nil, nil
+	}
+	recorder := httptest.NewRecorder()
+	request := authenticatedRequest(
+		http.MethodPost,
+		"http://example.test/api/v1/extractions",
+		strings.NewReader(`{"url":"https://www.xiaohongshu.com/explore/fixture123"}`),
+		cookie,
+	)
+	request.Header.Set("Origin", "https://evil.example")
+	app.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden ||
+		!strings.Contains(recorder.Body.String(), `"code":"ORIGIN_NOT_ALLOWED"`) {
+		t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
+	}
+	var runCount int
+	if err := app.store.db.QueryRow("SELECT COUNT(*) FROM parse_runs").Scan(&runCount); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 0 {
+		t.Fatalf("cross-origin authenticated request created %d parse runs", runCount)
+	}
+}
+
 func TestExtractionHistoryAndWorkDetail(t *testing.T) {
 	app := newAdminTestApp(t)
+	enablePublicTestAccess(t, app)
 	fixture, err := os.ReadFile(filepath.Join("testdata", "note.html"))
 	if err != nil {
 		t.Fatal(err)

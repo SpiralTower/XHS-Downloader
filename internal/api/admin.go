@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -52,7 +53,9 @@ func (l *adminLoginLimiter) reserve(key string, now time.Time) bool {
 		return false
 	}
 	if !exists && len(l.attempts) >= maxLoginLimiterEntries {
-		l.evictOldestLocked()
+		// pruneLocked already removed expired entries. Never evict live counters
+		// or blocks to admit a new source, because that resets its failure budget.
+		return false
 	}
 	if !exists || attempt.WindowStart.IsZero() || now.Sub(attempt.WindowStart) >= 5*time.Minute {
 		attempt = adminLoginAttempt{WindowStart: now}
@@ -79,20 +82,6 @@ func (l *adminLoginLimiter) pruneLocked(now time.Time) {
 		if !now.Before(expiresAt) {
 			delete(l.attempts, key)
 		}
-	}
-}
-
-func (l *adminLoginLimiter) evictOldestLocked() {
-	oldestKey := ""
-	var oldest time.Time
-	for key, attempt := range l.attempts {
-		if oldestKey == "" || attempt.WindowStart.Before(oldest) {
-			oldestKey = key
-			oldest = attempt.WindowStart
-		}
-	}
-	if oldestKey != "" {
-		delete(l.attempts, oldestKey)
 	}
 }
 
@@ -209,7 +198,7 @@ func (a *App) handleSessionLogin(writer http.ResponseWriter, request *http.Reque
 		writeAPIError(writer, requestDecodeStatus(err), "INVALID_REQUEST", "登录请求无效")
 		return
 	}
-	loginKey := loginRateLimitKey(request)
+	loginKey := rateLimitSourceKey(request)
 	now := time.Now().UTC()
 	if !a.loginLimiter.reserve(loginKey, now) {
 		writeAPIError(writer, http.StatusTooManyRequests, "LOGIN_RATE_LIMITED", "登录失败次数过多，请稍后重试")
@@ -261,10 +250,27 @@ func (a *App) handleSessionLogin(writer http.ResponseWriter, request *http.Reque
 	})
 }
 
-func loginRateLimitKey(request *http.Request) string {
+func requestRemoteHost(request *http.Request) string {
 	host := request.RemoteAddr
 	if parsed, _, err := net.SplitHostPort(request.RemoteAddr); err == nil {
 		host = parsed
+	}
+	return host
+}
+
+func rateLimitSourceKey(request *http.Request) string {
+	host := requestRemoteHost(request)
+	address, err := netip.ParseAddr(host)
+	if err != nil {
+		return host
+	}
+	address = address.Unmap()
+	if address.Is4() {
+		return address.String()
+	}
+	if address.Is6() {
+		address = address.WithZone("")
+		return netip.PrefixFrom(address, 64).Masked().String()
 	}
 	return host
 }

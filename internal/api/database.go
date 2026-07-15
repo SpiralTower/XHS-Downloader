@@ -431,6 +431,9 @@ func (s *appStore) migrate(ctx context.Context) error {
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return fmt.Errorf("read schema migrations: %w", err)
 	}
+	// Historical migration text is checksummed and immutable. Apply current
+	// security defaults only when this transaction created the database.
+	freshDatabase := nextVersion == 1
 	for _, migration := range migrations[nextVersion-1:] {
 		if migration.version != nextVersion {
 			return fmt.Errorf("executable migrations are not contiguous at version %d", nextVersion)
@@ -446,6 +449,15 @@ func (s *appStore) migrate(ctx context.Context) error {
 			return fmt.Errorf("record schema migration %d: %w", migration.version, err)
 		}
 		nextVersion++
+	}
+	if freshDatabase {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE app_settings
+			SET public_enabled = 0, refetch_existing = 0
+			WHERE id = 1
+		`); err != nil {
+			return fmt.Errorf("apply secure settings defaults: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit schema migrations: %w", err)

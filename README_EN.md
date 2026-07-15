@@ -116,11 +116,11 @@
 <ol>
 <li>Copy <code>.env.example</code> to <code>.env</code> and set a strong, unique <code>XHS_ADMIN_PASSWORD</code></li>
 <li>Run <code>docker compose up --build -d</code></li>
-<li>Open <code>http://127.0.0.1:5556/</code> for the user site and <code>/admin/login</code> for the admin site</li>
+<li>Open <code>/admin/login</code> first. New databases keep public extraction disabled until an administrator explicitly enables it.</li>
 <li>Use <code>docker compose logs -f api</code> to follow logs</li>
 <li>Run <code>docker compose down</code> to stop; SQLite, the encryption key, and downloads persist in the <code>xhs-volume</code> named volume</li>
 </ol>
-<p><strong>Deployment constraint:</strong> run exactly one application instance against the same persistent volume; do not scale replicas. A second writer on that volume exits on the <code>.xhs-downloader.lock</code> conflict. <code>XHS_DATABASE_PATH</code> must remain inside <code>XHS_VOLUME_DIR</code>. Set <code>XHS_SESSION_COOKIE_SECURE=true</code> behind production HTTPS. See <a href="docs/GO_API.md">the Go API deployment guide</a> for read-only external Secrets, backups, and all environment variables.</p>
+<p><strong>Deployment constraint:</strong> run exactly one application instance against the same persistent volume; do not scale replicas. A second writer on that volume exits on the <code>.xhs-downloader.lock</code> conflict. <code>XHS_DATABASE_PATH</code> must remain inside <code>XHS_VOLUME_DIR</code>. Set <code>XHS_SESSION_COOKIE_SECURE=true</code> behind production HTTPS. Anonymous extraction defaults to 12 requests per source/minute, 120 globally/minute, and 4 concurrent requests; administrators use independent capacity. See <a href="docs/GO_API.md">the Go API deployment guide</a> for all environment variables.</p>
 <p>Direct Docker usage: <code>docker build -t xhs-downloader:local .</code>, then <code>docker run --rm -p 5556:5556 --env-file .env -v xhs-volume:/app/Volume xhs-downloader:local</code>.</p>
 <h1>🛠 Command Line Mode</h1>
 <p>The project supports command line mode. If you want to download specific images from a text and image notes, you can use this mode to set the image sequence number you want to download!</p>
@@ -140,8 +140,8 @@
 <h2>Go API Mode</h2>
 <p><b>Start:</b> Set <code>XHS_ADMIN_PASSWORD</code>, run the frontend tests and build, then run <code>go run ./cmd/api</code></p>
 <p><b>Stop:</b> Press <code>Ctrl</code> + <code>C</code> to stop the server</p>
-<p>Open <code>http://127.0.0.1:5556/</code> for the user site and <code>/admin/login</code> for the admin site. API documentation is available at <code>/docs</code> and <code>/openapi.json</code>.</p>
-<p>New clients should use <code>POST /api/v1/extractions</code>, which accepts only a link and optional request-scoped connection overrides; admin settings control persistence and refetching. The legacy Python API remains available but is no longer the Docker default.</p>
+<p>Open <code>/admin/login</code> for the admin site. New databases disable public extraction and refetching by default; administrators can explicitly enable them. API documentation is available at <code>/docs</code> and <code>/openapi.json</code>.</p>
+<p>New clients should use <code>POST /api/v1/extractions</code>. Anonymous requests accept only a link; request-scoped Cookie/proxy overrides require an authenticated same-origin administrator. Admin settings control persistence and refetching. The legacy Python API remains available but is no longer the Docker default.</p>
 <p><b>Compatibility endpoint:</b>
 <code>/xhs/detail</code></p>
 <p><b>Request method:</b>
@@ -197,10 +197,11 @@
 </tr>
 </tbody>
 </table>
-<p><b>Persistence semantics:</b> <code>download</code> only gates persistence for this compatibility request. Actual resource categories are still limited by the admin policy, and <code>download=false</code> stores nothing. Request Cookie and proxy values are removed from response parameters. With <code>download=true</code>, partial save failures still return the parsed work and expose only stable codes in <code>data.下载错误</code>, never raw network or filesystem errors.</p>
+<p><b>Persistence semantics:</b> <code>download</code> only gates persistence for this compatibility request. Actual resource categories are still limited by the admin policy, and <code>download=false</code> stores nothing. Request-scoped Cookie and proxy values require an authenticated same-origin administrator and are removed from response parameters. With <code>download=true</code>, partial save failures still return the parsed work and expose only stable codes in <code>data.下载错误</code>, never raw network or filesystem errors.</p>
 <p><b>Resource limit:</b> <code>XHS_MAX_MEDIA_BYTES</code> defaults to 2 GiB for each saved image or video. See <a href="docs/ADMIN_WEB.md">the admin and SQLite guide</a> for the admin site, read-only Secret, and single-instance operations.</p>
 <p><b>Proxy security:</b> The Go API rejects proxies resolving to private, loopback or link-local addresses by default. Set <code>XHS_ALLOW_PRIVATE_PROXY=true</code> only for trusted local deployments, never for a public service.</p>
-<p><b>Code example:</b></p>
+<p><b>Public access:</b> disabled for new databases. When enabled, both extraction endpoints share anonymous rate and concurrency limits; HTTP 429 includes <code>Retry-After</code>.</p>
+<p><b>Code example:</b> An administrator must enable public extraction first; this anonymous example does not send Cookie or proxy overrides.</p>
 <pre>
 async def example_api():
     """通过 API 设置参数，适合二次开发"""
@@ -213,7 +214,6 @@ async def example_api():
             6,
             9,
         ],
-        "proxy": "http://127.0.0.1:10808",
     }
     response = post(server, json=data, timeout=10)
     print(response.json())

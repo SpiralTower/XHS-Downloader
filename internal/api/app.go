@@ -15,21 +15,22 @@ import (
 )
 
 type App struct {
-	config           Config
-	logger           *log.Logger
-	records          *recordStore
-	store            *appStore
-	handler          http.Handler
-	startedAt        time.Time
-	clientFactory    clientFactory
-	clients          *httpClientPool
-	downloads        *downloadCoordinator
-	adminFingerprint [32]byte
-	adminConfigured  bool
-	loginLimiter     *adminLoginLimiter
-	volumeLock       *os.File
-	closeOnce        sync.Once
-	closeErr         error
+	config            Config
+	logger            *log.Logger
+	records           *recordStore
+	store             *appStore
+	handler           http.Handler
+	startedAt         time.Time
+	clientFactory     clientFactory
+	clients           *httpClientPool
+	downloads         *downloadCoordinator
+	adminFingerprint  [32]byte
+	adminConfigured   bool
+	loginLimiter      *adminLoginLimiter
+	publicExtractions *publicExtractionGate
+	volumeLock        *os.File
+	closeOnce         sync.Once
+	closeErr          error
 }
 
 func New(config Config, logger *log.Logger) (*App, error) {
@@ -81,6 +82,11 @@ func New(config Config, logger *log.Logger) (*App, error) {
 		adminFingerprint: adminFingerprint,
 		adminConfigured:  adminConfigured,
 		loginLimiter:     newAdminLoginLimiter(),
+		publicExtractions: newPublicExtractionGate(
+			config.PublicRateLimitPerMinute,
+			config.PublicGlobalRateLimitPerMinute,
+			config.PublicMaxConcurrency,
+		),
 		downloads: newDownloadCoordinator(defaultDownloadConcurrency, downloadLimits{
 			totalTimeout:  config.DownloadTimeout,
 			idleTimeout:   config.DownloadIdleTimeout,

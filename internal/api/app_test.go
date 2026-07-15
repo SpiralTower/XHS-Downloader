@@ -30,8 +30,20 @@ func newTestApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
+	enablePublicTestAccess(t, app)
 	t.Cleanup(func() { _ = app.Close() })
 	return app
+}
+
+func enablePublicTestAccess(t *testing.T, app *App) {
+	t.Helper()
+	if _, err := app.store.db.Exec(`
+		UPDATE app_settings
+		SET public_enabled = 1, refetch_existing = 1
+		WHERE id = 1
+	`); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestHealthAndValidation(t *testing.T) {
@@ -160,6 +172,7 @@ func TestRequestBodyTooLargeReturns413(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Close()
+	enablePublicTestAccess(t, app)
 
 	body := `{"url":"https://www.xiaohongshu.com/explore/` + strings.Repeat("x", 128) + `"}`
 	recorder := httptest.NewRecorder()
@@ -181,6 +194,7 @@ func TestPageTimeoutDoesNotLimitMediaStreaming(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Close()
+	enablePublicTestAccess(t, app)
 
 	fixture, err := os.ReadFile(filepath.Join("testdata", "note.html"))
 	if err != nil {
@@ -241,6 +255,7 @@ func TestPageFetchHonorsRequestTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Close()
+	enablePublicTestAccess(t, app)
 
 	app.clientFactory = func(_ *string) (*http.Client, error) {
 		return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

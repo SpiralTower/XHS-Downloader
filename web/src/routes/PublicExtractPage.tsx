@@ -100,10 +100,12 @@ export default function PublicExtractPage() {
       return;
     }
 
-    const connection = {
-      ...(values.cookie.trim() ? { cookie: values.cookie.trim() } : {}),
-      ...(values.proxy.trim() ? { proxy: values.proxy.trim() } : {}),
-    };
+    const connection = access.authenticated
+      ? {
+          ...(values.cookie.trim() ? { cookie: values.cookie.trim() } : {}),
+          ...(values.proxy.trim() ? { proxy: values.proxy.trim() } : {}),
+        }
+      : {};
 
     controllerRef.current?.abort();
     const controller = new AbortController();
@@ -248,60 +250,62 @@ export default function PublicExtractPage() {
           <FieldError className="mt-2 text-center" />
         </TextField>
 
-        <div className="mt-2.5 flex justify-start px-1 sm:px-1.5">
-          <Disclosure className="w-full max-w-sm">
-            <Disclosure.Heading>
-              <Button
-                className="h-8 gap-1.5 px-2.5 text-xs text-muted"
-                slot="trigger"
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <ShieldIcon className="size-3.5" />
-                高级选项
-                <Disclosure.Indicator className="size-3.5" />
-              </Button>
-            </Disclosure.Heading>
-            <Disclosure.Content>
-              <Disclosure.Body className="mt-2 grid gap-3 rounded-2xl border border-border bg-surface-secondary/90 p-3.5 text-start shadow-sm">
-                <TextField
-                  fullWidth
-                  name="cookie"
-                  onChange={(cookie) => patchValues({ cookie })}
-                  value={values.cookie}
+        {access.authenticated && (
+          <div className="mt-2.5 flex justify-start px-1 sm:px-1.5">
+            <Disclosure className="w-full max-w-sm">
+              <Disclosure.Heading>
+                <Button
+                  className="h-8 gap-1.5 px-2.5 text-xs text-muted"
+                  slot="trigger"
+                  size="sm"
+                  type="button"
+                  variant="ghost"
                 >
-                  <Label>Cookie</Label>
-                  <Input
-                    autoComplete="off"
-                    placeholder="留空使用服务端默认"
-                    spellCheck={false}
-                    type="password"
-                  />
-                </TextField>
-                <TextField
-                  fullWidth
-                  name="proxy"
-                  onChange={(proxy) => patchValues({ proxy })}
-                  value={values.proxy}
-                >
-                  <Label>代理</Label>
-                  <Input
-                    autoCapitalize="none"
-                    autoComplete="off"
-                    placeholder="留空使用服务端默认"
-                    spellCheck={false}
-                    type="password"
-                  />
-                  <FieldError />
-                </TextField>
-                <Description className="text-xs">
-                  仅覆盖本次请求，不会写入历史。
-                </Description>
-              </Disclosure.Body>
-            </Disclosure.Content>
-          </Disclosure>
-        </div>
+                  <ShieldIcon className="size-3.5" />
+                  高级选项
+                  <Disclosure.Indicator className="size-3.5" />
+                </Button>
+              </Disclosure.Heading>
+              <Disclosure.Content>
+                <Disclosure.Body className="mt-2 grid gap-3 rounded-2xl border border-border bg-surface-secondary/90 p-3.5 text-start shadow-sm">
+                  <TextField
+                    fullWidth
+                    name="cookie"
+                    onChange={(cookie) => patchValues({ cookie })}
+                    value={values.cookie}
+                  >
+                    <Label>Cookie</Label>
+                    <Input
+                      autoComplete="off"
+                      placeholder="留空使用服务端默认"
+                      spellCheck={false}
+                      type="password"
+                    />
+                  </TextField>
+                  <TextField
+                    fullWidth
+                    name="proxy"
+                    onChange={(proxy) => patchValues({ proxy })}
+                    value={values.proxy}
+                  >
+                    <Label>代理</Label>
+                    <Input
+                      autoCapitalize="none"
+                      autoComplete="off"
+                      placeholder="留空使用服务端默认"
+                      spellCheck={false}
+                      type="password"
+                    />
+                    <FieldError />
+                  </TextField>
+                  <Description className="text-xs">
+                    仅管理员可覆盖本次连接，不会写入历史。
+                  </Description>
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
+          </div>
+        )}
       </Form>
 
       {state === "idle" && popular?.enabled && (
