@@ -17,6 +17,7 @@ import { useLoaderData } from "react-router";
 
 import { ApiError, extractDetail } from "../api";
 import ExtractResult from "../features/extraction/ExtractResult";
+import PopularWorksSection from "../features/extraction/PopularWorksSection";
 import {
   CheckIcon,
   SearchIcon,
@@ -24,8 +25,8 @@ import {
   XIcon,
 } from "../icons";
 import type {
-  AccessSnapshot,
   ExtractionResponse,
+  PublicHomeData,
   PublicExtractFormValues,
   RequestState,
 } from "../types";
@@ -58,7 +59,7 @@ function validateWorkUrl(value: string): string | null {
 }
 
 export default function PublicExtractPage() {
-  const access = useLoaderData() as AccessSnapshot;
+  const { access, popular } = useLoaderData() as PublicHomeData;
   const [values, setValues] = useState(initialValues);
   const [state, setState] = useState<RequestState>("idle");
   const [response, setResponse] = useState<ExtractionResponse | null>(null);
@@ -302,6 +303,10 @@ export default function PublicExtractPage() {
           </Disclosure>
         </div>
       </Form>
+
+      {state === "idle" && popular?.enabled && (
+        <PopularWorksSection popular={popular} />
+      )}
 
       <div
         aria-live={state === "error" ? "assertive" : "polite"}

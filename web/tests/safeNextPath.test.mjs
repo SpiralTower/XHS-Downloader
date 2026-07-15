@@ -13,6 +13,10 @@ test("accepts only the public root and admin routes", () => {
     safeNextPath("/admin/history?cursor=25#resources", fallback),
     "/admin/history?cursor=25",
   );
+  assert.equal(
+    safeNextPath("/admin/works/42?tab=resources#ignored", fallback),
+    "/admin/works/42?tab=resources",
+  );
 });
 
 test("rejects cross-origin, ambiguous, and unrelated paths", () => {

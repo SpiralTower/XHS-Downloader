@@ -5,8 +5,9 @@ Go 服务同时提供用户解析页面、管理端和版本化历史数据库�
 - 用户端：`/`
 - 管理端登录：`/admin/login`
 - 设置：`/admin/settings`
+- 作品：`/admin/works`
+- 作品版本详情：`/admin/works/:workId`
 - 查询历史：`/admin/history`
-- 作品版本详情：`/admin/history/:workId`
 
 ## 首次启动
 
@@ -40,11 +41,14 @@ XHS_SESSION_COOKIE_SECURE=true
 
 - `/`：用户端，只包含作品链接和高级连接选项中的本次 Cookie、代理覆盖值。
 - `/admin/login`：管理端登录。
-- `/admin/settings`：默认连接、公共访问、保存策略与重新抓取策略。
-- `/admin/history`：每次解析请求的记录。
-- `/admin/history/:workId`：同一作品的版本时间线及每个版本关联的资源。
+- `/admin/settings`：默认连接、公共访问、首页热门榜单、保存策略与重新抓取策略。
+- `/admin/works`：唯一作品、成功解析次数、已保存标题/缩略图和最近解析时间。
+- `/admin/works/:workId`：同一作品的版本时间线及每个版本关联的资源。
+- `/admin/history`：每次解析请求的记录；旧 `/admin/history/:workId` 会重定向到作品详情。
 
 关闭“允许匿名访问”后，静态页面仍可加载，但匿名解析会被服务端拒绝；已登录管理员仍可从同源用户端解析。不要只依赖前端隐藏按钮，权限由服务端执行。
+
+开启“首页显示热门解析榜单”后，榜单条目会在新标签页打开该作品解析所得的规范小红书链接。
 
 ## 默认连接与请求覆盖
 
@@ -66,7 +70,7 @@ XHS_SESSION_COOKIE_SECURE=true
 管理端可独立控制：
 
 - 保存文案：为作品版本生成 `work.json`。
-- 保存图片：保存图文静态图片。
+- 保存图片：保存图文静态图片，以及视频作品的主封面。
 - 保存视频：保存普通视频和实况照片的视频部分。
 
 文件按 `Volume/Download/<作品ID>/v<版本号>/` 保存。SQLite 记录资源类型、顺序、保存状态、MIME、大小与 SHA-256；管理 API 不暴露服务端文件路径。
@@ -77,7 +81,7 @@ XHS_SESSION_COOKIE_SECURE=true
 - `download=true`：实际保存类别是“管理端开启的类别”与本次下载请求的交集。
 - `index`：仅在 `download=true` 时筛选图文的静态图片和对应实况视频；普通视频忽略该参数。
 
-关闭某类保存策略不会删除此前已经保存的文件。
+关闭某类保存策略不会删除或隐藏此前已经成功保存的文件；作品页仍可显示这些已存标题和缩略图。
 
 每个图片或视频资源受 `XHS_MAX_MEDIA_BYTES` 限制，默认 `2147483648` 字节（2 GiB）。服务会同时检查上游 `Content-Length` 和实际读取量，超限资源不会作为成功文件发布。保存失败仍返回作品数据：新版 API 的 `version.resources[].save_error` 和兼容接口的 `data.下载错误` 只包含稳定错误码，原始网络/文件错误仅写服务端日志。
 
@@ -101,13 +105,17 @@ works
 
 work_cache_scopes ──> work_versions
 parse_runs ──> works / work_versions
+work_parse_daily ──> works
 ~~~
 
 - `parse_runs`：每次查询尝试，包括成功、失败、缓存或跳过。
-- `works`：稳定作品 ID。
+- `works`：稳定作品 ID、累计成功解析次数与最近解析时间。
 - `work_versions`：按规范化内容 SHA-256 去重的版本快照。
 - `work_cache_scopes`：默认/无连接与授权查询 HMAC scope 到最新版本的缓存映射。
 - `version_resources`：版本关联的文案、图片和视频资源及保存状态。
+- `work_parse_daily`：按 UTC 自然日聚合成功抓取和缓存命中次数，用于近 7/30 天榜单。
+
+`parse_runs` 仍只保留最近 10,000 条，但累计与每日统计不会随历史清理而减少。升级时只能从尚存的成功记录回填，已被旧版本清理的次数无法恢复。
 
 旧 `Volume/downloaded.json` 会在启动时幂等导入为兼容下载标记，原文件不会被删除。
 
@@ -156,6 +164,7 @@ SQLite 启用 foreign keys、WAL、busy timeout 和 immediate 写事务。
 
 ~~~text
 GET  /api/v1/access
+GET  /api/v1/popular-works
 POST /api/v1/extractions
 POST /xhs/detail
 ~~~
@@ -166,7 +175,9 @@ POST /xhs/detail
 GET|POST|DELETE /api/admin/v1/auth/session
 GET|PATCH        /api/admin/v1/settings
 GET              /api/admin/v1/history
+GET              /api/admin/v1/works
 GET              /api/admin/v1/works/:id
+GET|HEAD         /api/admin/v1/resources/:id/content
 ~~~
 
 管理会话使用同源 `HttpOnly`、`SameSite=Strict` Cookie。设置修改、登录、登出，以及关闭公共访问后的管理员解析都会校验请求来源。

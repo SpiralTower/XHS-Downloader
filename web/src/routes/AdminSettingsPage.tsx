@@ -84,6 +84,7 @@ export default function AdminSettingsPage() {
       const result = await updateAdminSettings({
         revision: draft.revision,
         public: draft.public,
+        show_popular: draft.show_popular,
         save: draft.save,
         refetch: draft.refetch,
         default_cookie: {
@@ -200,7 +201,7 @@ export default function AdminSettingsPage() {
               <Card.Title>访问</Card.Title>
             </Card.Header>
             <Card.Content>
-              <Fieldset>
+              <Fieldset className="grid gap-2">
                 <Fieldset.Legend className="sr-only">访问策略</Fieldset.Legend>
                 <SettingSwitch
                   description="关闭后匿名解析需登录"
@@ -210,6 +211,17 @@ export default function AdminSettingsPage() {
                   onChange={(value) =>
                     setDraft((current) =>
                       current ? { ...current, public: value } : current,
+                    )
+                  }
+                />
+                <SettingSwitch
+                  description="开启后在首页展示累计与近期热门作品"
+                  isDisabled={isSaving}
+                  isSelected={draft.show_popular}
+                  label="首页显示热门解析榜单"
+                  onChange={(value) =>
+                    setDraft((current) =>
+                      current ? { ...current, show_popular: value } : current,
                     )
                   }
                 />

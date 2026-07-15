@@ -127,6 +127,7 @@ type saveSettingsView struct {
 type settingsResponse struct {
 	Revision      int64                `json:"revision"`
 	Public        bool                 `json:"public"`
+	ShowPopular   bool                 `json:"show_popular"`
 	Save          saveSettingsView     `json:"save"`
 	Refetch       bool                 `json:"refetch"`
 	DefaultCookie configuredSecretView `json:"default_cookie"`
@@ -147,6 +148,7 @@ type saveSettingsPatch struct {
 type settingsPatchRequest struct {
 	Revision      int64               `json:"revision"`
 	Public        *bool               `json:"public,omitempty"`
+	ShowPopular   *bool               `json:"show_popular,omitempty"`
 	Save          *saveSettingsPatch  `json:"save,omitempty"`
 	Refetch       *bool               `json:"refetch,omitempty"`
 	DefaultCookie *secretPatchRequest `json:"default_cookie,omitempty"`
@@ -372,9 +374,10 @@ func (a *App) patchAdminSettings(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	update := settingsUpdate{
-		Revision: patch.Revision,
-		Public:   patch.Public,
-		Refetch:  patch.Refetch,
+		Revision:    patch.Revision,
+		Public:      patch.Public,
+		ShowPopular: patch.ShowPopular,
+		Refetch:     patch.Refetch,
 	}
 	if patch.Save != nil {
 		update.SaveText = patch.Save.Text
@@ -457,8 +460,9 @@ func (a *App) validateProxyPatch(patch *secretPatchRequest) (*secretMutation, er
 
 func settingsAPIResponse(settings runtimeSettings) settingsResponse {
 	response := settingsResponse{
-		Revision: settings.Revision,
-		Public:   settings.Public,
+		Revision:    settings.Revision,
+		Public:      settings.Public,
+		ShowPopular: settings.ShowPopular,
 		Save: saveSettingsView{
 			Text: settings.SaveText, Images: settings.SaveImages, Videos: settings.SaveVideos,
 		},

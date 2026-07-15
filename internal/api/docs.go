@@ -54,6 +54,16 @@ func openAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/v1/popular-works": map[string]any{
+				"get": map[string]any{
+					"summary":  "读取首页累计、近 30 天与近 7 天热门作品",
+					"security": publicOrAdminSecurity,
+					"responses": map[string]any{
+						"200": jsonResponse("榜单开关与 Top10 数据", map[string]any{"$ref": "#/components/schemas/PopularWorks"}),
+						"401": jsonResponse("未开放匿名访问", map[string]any{"$ref": "#/components/schemas/APIError"}),
+					},
+				},
+			},
 			"/api/admin/v1/auth/session": map[string]any{
 				"get": map[string]any{
 					"summary": "读取管理会话状态",
@@ -105,6 +115,17 @@ func openAPIDocument() map[string]any {
 					"responses": map[string]any{"200": response("解析记录和 next_cursor")},
 				},
 			},
+			"/api/admin/v1/works": map[string]any{
+				"get": map[string]any{
+					"summary":  "分页读取唯一作品、解析次数和已保存预览",
+					"security": adminSecurity,
+					"parameters": []any{
+						map[string]any{"name": "cursor", "in": "query", "schema": map[string]any{"type": "string"}},
+						map[string]any{"name": "limit", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 25}},
+					},
+					"responses": map[string]any{"200": jsonResponse("作品分页", map[string]any{"$ref": "#/components/schemas/AdminWorkPage"})},
+				},
+			},
 			"/api/admin/v1/works/{id}": map[string]any{
 				"get": map[string]any{
 					"summary":  "读取作品的全部版本和版本资源",
@@ -113,6 +134,16 @@ func openAPIDocument() map[string]any {
 						map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "integer", "minimum": 1}},
 					},
 					"responses": map[string]any{"200": response("作品、版本与资源"), "404": response("作品不存在")},
+				},
+			},
+			"/api/admin/v1/resources/{id}/content": map[string]any{
+				"get": map[string]any{
+					"summary":  "读取已保存的作品缩略图",
+					"security": adminSecurity,
+					"parameters": []any{
+						map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "integer", "minimum": 1}},
+					},
+					"responses": map[string]any{"200": response("已保存图片内容"), "404": response("资源不存在")},
 				},
 			},
 			"/xhs/detail": map[string]any{
@@ -180,9 +211,9 @@ func openAPIDocument() map[string]any {
 					"properties": map[string]any{"configured": map[string]any{"type": "boolean"}, "display": map[string]any{"type": "string", "description": "不含用户名、密码、路径、查询参数或片段。"}},
 				},
 				"AdminSettings": map[string]any{
-					"type": "object", "required": []string{"revision", "public", "save", "refetch", "default_cookie", "default_proxy"},
+					"type": "object", "required": []string{"revision", "public", "show_popular", "save", "refetch", "default_cookie", "default_proxy"},
 					"properties": map[string]any{
-						"revision": map[string]any{"type": "integer"}, "public": map[string]any{"type": "boolean"}, "save": map[string]any{"type": "object"}, "refetch": map[string]any{"type": "boolean"},
+						"revision": map[string]any{"type": "integer"}, "public": map[string]any{"type": "boolean"}, "show_popular": map[string]any{"type": "boolean"}, "save": map[string]any{"type": "object"}, "refetch": map[string]any{"type": "boolean"},
 						"default_cookie": map[string]any{"$ref": "#/components/schemas/SecretView"}, "default_proxy": map[string]any{"$ref": "#/components/schemas/SecretView"},
 					},
 				},
@@ -193,8 +224,38 @@ func openAPIDocument() map[string]any {
 				"AdminSettingsPatch": map[string]any{
 					"type": "object", "required": []string{"revision"}, "additionalProperties": false,
 					"properties": map[string]any{
-						"revision": map[string]any{"type": "integer", "minimum": 1}, "public": map[string]any{"type": "boolean"}, "save": map[string]any{"type": "object"}, "refetch": map[string]any{"type": "boolean"},
+						"revision": map[string]any{"type": "integer", "minimum": 1}, "public": map[string]any{"type": "boolean"}, "show_popular": map[string]any{"type": "boolean"}, "save": map[string]any{"type": "object"}, "refetch": map[string]any{"type": "boolean"},
 						"default_cookie": map[string]any{"$ref": "#/components/schemas/SecretPatch"}, "default_proxy": map[string]any{"$ref": "#/components/schemas/SecretPatch"},
+					},
+				},
+				"PopularWork": map[string]any{
+					"type": "object", "required": []string{"platform_id", "work_url", "parse_count"},
+					"properties": map[string]any{
+						"platform_id": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "work_url": map[string]any{"type": "string", "format": "uri"}, "parse_count": map[string]any{"type": "integer", "minimum": 1},
+					},
+				},
+				"PopularWorks": map[string]any{
+					"type": "object", "required": []string{"enabled", "all_time", "recent_30d", "recent_7d"},
+					"properties": map[string]any{
+						"enabled":    map[string]any{"type": "boolean"},
+						"all_time":   map[string]any{"type": "array", "maxItems": 10, "items": map[string]any{"$ref": "#/components/schemas/PopularWork"}},
+						"recent_30d": map[string]any{"type": "array", "maxItems": 10, "items": map[string]any{"$ref": "#/components/schemas/PopularWork"}},
+						"recent_7d":  map[string]any{"type": "array", "maxItems": 10, "items": map[string]any{"$ref": "#/components/schemas/PopularWork"}},
+					},
+				},
+				"AdminWorkListItem": map[string]any{
+					"type": "object", "required": []string{"id", "platform_id", "parse_count", "version_count"},
+					"properties": map[string]any{
+						"id": map[string]any{"type": "integer"}, "platform_id": map[string]any{"type": "string"},
+						"parse_count": map[string]any{"type": "integer", "minimum": 0}, "version_count": map[string]any{"type": "integer", "minimum": 0},
+						"last_parsed_at": map[string]any{"type": "string", "format": "date-time"}, "title": map[string]any{"type": "string"}, "thumbnail_url": map[string]any{"type": "string"},
+					},
+				},
+				"AdminWorkPage": map[string]any{
+					"type": "object", "required": []string{"items", "next_cursor"},
+					"properties": map[string]any{
+						"items":       map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/AdminWorkListItem"}},
+						"next_cursor": map[string]any{"type": []string{"string", "null"}},
 					},
 				},
 				"LegacyExtractParams": map[string]any{
@@ -227,7 +288,7 @@ body{max-width:920px;margin:0 auto;padding:48px 24px;font:16px/1.65 system-ui;co
 <pre>curl -X POST http://127.0.0.1:5556/api/v1/extractions \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://www.xiaohongshu.com/explore/作品ID"}'</pre></section>
-<section><h2>管理端</h2><p><code>/admin/login</code> 登录后可管理默认连接、公共访问、文案/图片/视频保存策略、重新抓取策略和版本历史。</p>
+<section><h2>管理端</h2><p><code>/admin/login</code> 登录后可管理默认连接、公共访问、首页热门榜单、文案/图片/视频保存策略，并查看作品统计、缩略图和版本历史。</p>
 <p>环境变量 <code>XHS_ADMIN_PASSWORD</code> 或 <code>XHS_ADMIN_PASSWORD_FILE</code> 必须在生产启动时显式配置；<code>XHS_MAX_MEDIA_BYTES</code> 限制单个媒体资源大小。</p>
 <p>旧接口 <code>/xhs/detail</code> 只有在 <code>download=true</code> 且管理员开启对应类别时保存；失败仅返回稳定错误码。</p></section>
 <section><h2>接口定义</h2><p><a href="/openapi.json">OpenAPI 3.1 JSON</a> · <a href="/healthz">健康检查</a> · <a href="/">用户端</a> · <a href="/admin/login">管理端</a></p></section>

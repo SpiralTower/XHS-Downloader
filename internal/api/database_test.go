@@ -56,7 +56,7 @@ func TestSQLiteInitializationLegacyImportAndRestart(t *testing.T) {
 	if err := app.store.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&migrationCount); err != nil {
 		t.Fatal(err)
 	}
-	if migrationCount != 1 {
+	if migrationCount != 2 {
 		t.Fatalf("migration count = %d", migrationCount)
 	}
 	databasePath := app.config.DatabasePath
@@ -84,7 +84,7 @@ func TestSQLiteInitializationLegacyImportAndRestart(t *testing.T) {
 	).Scan(&migrationCount); err != nil {
 		t.Fatal(err)
 	}
-	if migrationCount != 1 {
+	if migrationCount != 2 {
 		t.Fatalf("migration count after restart = %d", migrationCount)
 	}
 	imported, err = restarted.store.hasLegacyDownload(t.Context(), "legacy-note")
@@ -141,7 +141,7 @@ func TestConcurrentSQLiteInitialization(t *testing.T) {
 		).Scan(&migrationCount); err != nil {
 			t.Fatal(err)
 		}
-		if migrationCount != 1 {
+		if migrationCount != 2 {
 			t.Fatalf("round %d migration count = %d", round, migrationCount)
 		}
 		for _, store := range stores {

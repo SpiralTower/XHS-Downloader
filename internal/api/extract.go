@@ -24,6 +24,11 @@ func extractWork(note map[string]any, sourceURL, expectedID string) (map[string]
 
 	images := asSlice(note["imageList"])
 	typeName := classifyWork(firstString(note["type"]), len(images))
+	imageMedia, imageLives := imageURLs(images, "jpeg")
+	coverURL := ""
+	if len(imageMedia) > 0 {
+		coverURL = imageMedia[0]
+	}
 	user, _ := asMap(note["user"])
 	interact, _ := asMap(note["interactInfo"])
 
@@ -43,6 +48,7 @@ func extractWork(note map[string]any, sourceURL, expectedID string) (map[string]
 		"时间戳":    unixSeconds(note["time"]),
 		"作者昵称":   firstString(user["nickname"], user["nickName"], id),
 		"作者ID":   firstString(user["userId"]),
+		"封面地址":   coverURL,
 	}
 	authorID := stringValue(result["作者ID"])
 	if authorID != "" {
@@ -56,9 +62,8 @@ func extractWork(note map[string]any, sourceURL, expectedID string) (map[string]
 		result["下载地址"] = videoURLs(note, "resolution")
 		result["动图地址"] = []any{nil}
 	case "图文", "图集":
-		media, lives := imageURLs(images, "jpeg")
-		result["下载地址"] = media
-		result["动图地址"] = lives
+		result["下载地址"] = imageMedia
+		result["动图地址"] = imageLives
 	default:
 		result["下载地址"] = []string{}
 		result["动图地址"] = []any{}

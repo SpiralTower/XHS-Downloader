@@ -128,6 +128,58 @@ CREATE TABLE legacy_download_records (
 ) STRICT;
 `
 
+const databaseSchemaV2 = `
+ALTER TABLE app_settings
+	ADD COLUMN show_popular INTEGER NOT NULL DEFAULT 0 CHECK (show_popular IN (0, 1));
+
+ALTER TABLE works
+	ADD COLUMN parse_count INTEGER NOT NULL DEFAULT 0 CHECK (parse_count >= 0);
+
+ALTER TABLE works
+	ADD COLUMN last_parsed_at INTEGER;
+
+CREATE TABLE work_parse_daily (
+	work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+	day_start INTEGER NOT NULL CHECK (day_start % 86400000 = 0),
+	parse_count INTEGER NOT NULL CHECK (parse_count >= 0),
+	PRIMARY KEY(work_id, day_start)
+) STRICT;
+
+CREATE INDEX works_last_parsed_idx
+	ON works(last_parsed_at DESC, id DESC);
+
+CREATE INDEX works_popular_idx
+	ON works(parse_count DESC, last_parsed_at DESC, id DESC);
+
+CREATE INDEX work_parse_daily_day_idx
+	ON work_parse_daily(day_start, work_id);
+
+UPDATE works
+SET parse_count = (
+		SELECT COUNT(*)
+		FROM parse_runs r
+		WHERE r.work_id = works.id
+		  AND r.status = 'succeeded'
+		  AND r.source IN ('fetched', 'cache')
+	),
+	last_parsed_at = (
+		SELECT MAX(r.finished_at)
+		FROM parse_runs r
+		WHERE r.work_id = works.id
+		  AND r.status = 'succeeded'
+		  AND r.source IN ('fetched', 'cache')
+	);
+
+INSERT INTO work_parse_daily(work_id, day_start, parse_count)
+SELECT work_id, (finished_at / 86400000) * 86400000, COUNT(*)
+FROM parse_runs
+WHERE work_id IS NOT NULL
+  AND finished_at IS NOT NULL
+  AND status = 'succeeded'
+  AND source IN ('fetched', 'cache')
+GROUP BY work_id, (finished_at / 86400000) * 86400000;
+`
+
 var (
 	errNoCachedVersion          = errors.New("no cached work version")
 	errSettingsRevisionConflict = errors.New("settings revision conflict")
@@ -141,6 +193,7 @@ type appStore struct {
 type runtimeSettings struct {
 	Revision      int64
 	Public        bool
+	ShowPopular   bool
 	SaveText      bool
 	SaveImages    bool
 	SaveVideos    bool
@@ -158,6 +211,7 @@ type secretMutation struct {
 type settingsUpdate struct {
 	Revision      int64
 	Public        *bool
+	ShowPopular   *bool
 	SaveText      *bool
 	SaveImages    *bool
 	SaveVideos    *bool
@@ -331,37 +385,70 @@ func (s *appStore) migrate(ctx context.Context) error {
 	`); err != nil {
 		return fmt.Errorf("create schema migrations table: %w", err)
 	}
-	sum := sha256.Sum256([]byte(databaseSchemaV1))
-	checksum := hex.EncodeToString(sum[:])
+	type databaseMigration struct {
+		version int
+		name    string
+		schema  string
+	}
+	migrations := []databaseMigration{
+		{version: 1, name: "initial application database", schema: databaseSchemaV1},
+		{version: 2, name: "work statistics and popular display setting", schema: databaseSchemaV2},
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin schema migration: %w", err)
 	}
 	defer tx.Rollback()
-	var existing string
-	err = tx.QueryRowContext(ctx,
-		"SELECT checksum FROM schema_migrations WHERE version = 1",
-	).Scan(&existing)
-	if err == nil {
-		if existing != checksum {
-			return errors.New("database migration 1 checksum does not match the executable")
+	rows, err := tx.QueryContext(ctx, `
+		SELECT version, checksum FROM schema_migrations ORDER BY version
+	`)
+	if err != nil {
+		return fmt.Errorf("read schema migrations: %w", err)
+	}
+	nextVersion := 1
+	for rows.Next() {
+		var version int
+		var existingChecksum string
+		if err := rows.Scan(&version, &existingChecksum); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan schema migration: %w", err)
 		}
-		return tx.Commit()
+		if version != nextVersion {
+			rows.Close()
+			return fmt.Errorf("database migrations are not contiguous at version %d", nextVersion)
+		}
+		if version > len(migrations) {
+			rows.Close()
+			return fmt.Errorf("database migration %d is newer than the executable", version)
+		}
+		sum := sha256.Sum256([]byte(migrations[version-1].schema))
+		if existingChecksum != hex.EncodeToString(sum[:]) {
+			rows.Close()
+			return fmt.Errorf("database migration %d checksum does not match the executable", version)
+		}
+		nextVersion++
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("read schema migration: %w", err)
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return fmt.Errorf("read schema migrations: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, databaseSchemaV1); err != nil {
-		return fmt.Errorf("apply schema migration 1: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		"INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES(1, ?, ?, ?)",
-		"initial application database", checksum, unixMillis(time.Now()),
-	); err != nil {
-		return fmt.Errorf("record schema migration 1: %w", err)
+	for _, migration := range migrations[nextVersion-1:] {
+		if migration.version != nextVersion {
+			return fmt.Errorf("executable migrations are not contiguous at version %d", nextVersion)
+		}
+		if _, err := tx.ExecContext(ctx, migration.schema); err != nil {
+			return fmt.Errorf("apply schema migration %d: %w", migration.version, err)
+		}
+		sum := sha256.Sum256([]byte(migration.schema))
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO schema_migrations(version, name, checksum, applied_at)
+			VALUES (?, ?, ?, ?)
+		`, migration.version, migration.name, hex.EncodeToString(sum[:]), unixMillis(time.Now())); err != nil {
+			return fmt.Errorf("record schema migration %d: %w", migration.version, err)
+		}
+		nextVersion++
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit schema migration 1: %w", err)
+		return fmt.Errorf("commit schema migrations: %w", err)
 	}
 	return nil
 }
@@ -559,7 +646,7 @@ func normalizedCacheAuthorizationURL(raw string) string {
 
 func (s *appStore) loadSettings(ctx context.Context) (runtimeSettings, error) {
 	return s.scanSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, public_enabled, save_text, save_images, save_videos,
+		SELECT revision, public_enabled, show_popular, save_text, save_images, save_videos,
 		       refetch_existing, COALESCE(default_cookie, ''), COALESCE(default_proxy, ''), updated_at
 		FROM app_settings WHERE id = 1
 	`))
@@ -571,11 +658,11 @@ type rowScanner interface {
 
 func (s *appStore) scanSettings(row rowScanner) (runtimeSettings, error) {
 	var settings runtimeSettings
-	var public, text, images, videos, refetch int
+	var public, showPopular, text, images, videos, refetch int
 	var cookieEnvelope, proxyEnvelope string
 	var updatedAt int64
 	if err := row.Scan(
-		&settings.Revision, &public, &text, &images, &videos, &refetch,
+		&settings.Revision, &public, &showPopular, &text, &images, &videos, &refetch,
 		&cookieEnvelope, &proxyEnvelope, &updatedAt,
 	); err != nil {
 		return runtimeSettings{}, err
@@ -589,6 +676,7 @@ func (s *appStore) scanSettings(row rowScanner) (runtimeSettings, error) {
 		return runtimeSettings{}, err
 	}
 	settings.Public = public != 0
+	settings.ShowPopular = showPopular != 0
 	settings.SaveText = text != 0
 	settings.SaveImages = images != 0
 	settings.SaveVideos = videos != 0
@@ -606,14 +694,14 @@ func (s *appStore) updateSettings(ctx context.Context, update settingsUpdate) (r
 	}
 	defer tx.Rollback()
 	var revision int64
-	var public, text, images, videos, refetch int
+	var public, showPopular, text, images, videos, refetch int
 	var cookieEnvelope, proxyEnvelope string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT revision, public_enabled, save_text, save_images, save_videos,
+		SELECT revision, public_enabled, show_popular, save_text, save_images, save_videos,
 		       refetch_existing, COALESCE(default_cookie, ''), COALESCE(default_proxy, '')
 		FROM app_settings WHERE id = 1
 	`).Scan(
-		&revision, &public, &text, &images, &videos, &refetch,
+		&revision, &public, &showPopular, &text, &images, &videos, &refetch,
 		&cookieEnvelope, &proxyEnvelope,
 	); err != nil {
 		return runtimeSettings{}, err
@@ -632,6 +720,7 @@ func (s *appStore) updateSettings(ctx context.Context, update settingsUpdate) (r
 		}
 	}
 	applyBool(&public, update.Public)
+	applyBool(&showPopular, update.ShowPopular)
 	applyBool(&text, update.SaveText)
 	applyBool(&images, update.SaveImages)
 	applyBool(&videos, update.SaveVideos)
@@ -648,11 +737,11 @@ func (s *appStore) updateSettings(ctx context.Context, update settingsUpdate) (r
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
 		SET revision = revision + 1,
-		    public_enabled = ?, save_text = ?, save_images = ?, save_videos = ?,
+		    public_enabled = ?, show_popular = ?, save_text = ?, save_images = ?, save_videos = ?,
 		    refetch_existing = ?, default_cookie = NULLIF(?, ''),
 		    default_proxy = NULLIF(?, ''), updated_at = ?
 		WHERE id = 1 AND revision = ?
-	`, public, text, images, videos, refetch, cookieEnvelope, proxyEnvelope, now, revision)
+	`, public, showPopular, text, images, videos, refetch, cookieEnvelope, proxyEnvelope, now, revision)
 	if err != nil {
 		return runtimeSettings{}, err
 	}
@@ -791,6 +880,68 @@ func sanitizeHistoryErrorCode(code string) string {
 	return code
 }
 
+func completeSuccessfulParseRun(
+	ctx context.Context,
+	tx *sql.Tx,
+	runID int64,
+	source string,
+	workID, versionID int64,
+	finishedAt time.Time,
+) (bool, error) {
+	finishedAt = finishedAt.UTC()
+	finishedMillis := unixMillis(finishedAt)
+	result, err := tx.ExecContext(ctx, `
+		UPDATE parse_runs
+		SET status = 'succeeded', source = ?, finished_at = ?,
+		    work_id = ?, version_id = ?, error = NULL
+		WHERE id = ? AND status = 'running'
+	`, source, finishedMillis, workID, versionID, runID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if affected != 1 {
+		return false, fmt.Errorf("complete parse run %d: updated %d rows", runID, affected)
+	}
+	result, err = tx.ExecContext(ctx, `
+		UPDATE works
+		SET parse_count = parse_count + 1,
+		    last_parsed_at = CASE
+		        WHEN last_parsed_at IS NULL OR last_parsed_at < ? THEN ?
+		        ELSE last_parsed_at
+		    END
+		WHERE id = ?
+	`, finishedMillis, finishedMillis, workID)
+	if err != nil {
+		return false, err
+	}
+	affected, err = result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected != 1 {
+		return false, fmt.Errorf("complete parse run %d: work %d does not exist", runID, workID)
+	}
+	dayStart := time.Date(
+		finishedAt.Year(), finishedAt.Month(), finishedAt.Day(), 0, 0, 0, 0, time.UTC,
+	)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO work_parse_daily(work_id, day_start, parse_count)
+		VALUES (?, ?, 1)
+		ON CONFLICT(work_id, day_start) DO UPDATE SET
+			parse_count = work_parse_daily.parse_count + 1
+	`, workID, unixMillis(dayStart)); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *appStore) failParseRun(ctx context.Context, runID int64, errorCode string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -798,7 +949,8 @@ func (s *appStore) failParseRun(ctx context.Context, runID int64, errorCode stri
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE parse_runs SET status = 'failed', finished_at = ?, error = ? WHERE id = ?
+		UPDATE parse_runs SET status = 'failed', finished_at = ?, error = ?
+		WHERE id = ? AND status = 'running'
 	`, unixMillis(time.Now()), sanitizeHistoryErrorCode(errorCode), runID); err != nil {
 		return err
 	}
@@ -823,7 +975,7 @@ func (s *appStore) completeSkippedRun(ctx context.Context, runID int64, platform
 			    JOIN works w ON w.id = v.work_id
 			    WHERE w.platform_id = ? ORDER BY v.version_number DESC LIMIT 1
 		    ), error = NULL
-		WHERE id = ?
+		WHERE id = ? AND status = 'running'
 	`, unixMillis(time.Now()), platformID, platformID, runID); err != nil {
 		return err
 	}
@@ -948,12 +1100,9 @@ func (s *appStore) persistFetchedVersion(
 			return storedVersion{}, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE parse_runs
-		SET status = 'succeeded', source = 'fetched', finished_at = ?,
-		    work_id = ?, version_id = ?, error = NULL
-		WHERE id = ?
-	`, unixMillis(now), workID, versionID, runID); err != nil {
+	if _, err := completeSuccessfulParseRun(
+		ctx, tx, runID, "fetched", workID, versionID, now,
+	); err != nil {
 		return storedVersion{}, err
 	}
 	if err := pruneCompletedParseRuns(ctx, tx); err != nil {
@@ -979,12 +1128,10 @@ func (s *appStore) completeCachedRun(ctx context.Context, runID int64, version s
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE parse_runs
-		SET status = 'succeeded', source = 'cache', finished_at = ?,
-		    work_id = ?, version_id = ?, error = NULL
-		WHERE id = ?
-	`, unixMillis(time.Now()), version.WorkID, version.ID, runID); err != nil {
+	now := time.Now().UTC()
+	if _, err := completeSuccessfulParseRun(
+		ctx, tx, runID, "cache", version.WorkID, version.ID, now,
+	); err != nil {
 		return err
 	}
 	if err := pruneCompletedParseRuns(ctx, tx); err != nil {
@@ -1000,6 +1147,11 @@ func resourcesFromData(data map[string]any) []storedResource {
 	}
 	resources := make([]storedResource, 0, len(urls)+len(lives))
 	if stringValue(data["作品类型"]) == "视频" {
+		if coverURL := strings.TrimSpace(stringValue(data["封面地址"])); coverURL != "" {
+			resources = append(resources, storedResource{
+				Kind: "image", Ordinal: 0, RemoteURL: coverURL, SaveStatus: "pending",
+			})
+		}
 		if len(urls) > 0 && strings.TrimSpace(urls[0]) != "" {
 			resources = append(resources, storedResource{
 				Kind: "video", Ordinal: 1, RemoteURL: urls[0], SaveStatus: "pending",
@@ -1116,6 +1268,28 @@ func (s *appStore) loadVersionResources(ctx context.Context, versionID int64) ([
 		resources = append(resources, resource)
 	}
 	return resources, rows.Err()
+}
+
+func (s *appStore) storedImageResource(ctx context.Context, resourceID int64) (storedResource, error) {
+	if resourceID < 1 {
+		return storedResource{}, sql.ErrNoRows
+	}
+	var resource storedResource
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id, kind, ordinal, remote_url, save_status,
+		       COALESCE(relative_path, ''), COALESCE(mime_type, ''),
+		       COALESCE(size_bytes, 0), COALESCE(sha256, ''), COALESCE(save_error, '')
+		FROM version_resources
+		WHERE id = ? AND kind = 'image' AND save_status = 'stored'
+		  AND relative_path IS NOT NULL AND relative_path <> ''
+	`, resourceID).Scan(
+		&resource.ID, &resource.Kind, &resource.Ordinal, &resource.RemoteURL,
+		&resource.SaveStatus, &resource.RelativePath, &resource.MIMEType,
+		&resource.SizeBytes, &resource.SHA256, &resource.SaveError,
+	); err != nil {
+		return storedResource{}, err
+	}
+	return resource, nil
 }
 
 func (s *appStore) hasLegacyDownload(ctx context.Context, platformID string) (bool, error) {

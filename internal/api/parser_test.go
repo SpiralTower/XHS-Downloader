@@ -36,6 +36,9 @@ func TestParseInitialStateAndExtractWork(t *testing.T) {
 	if want := "https://ci.xiaohongshu.com/fixture-image-1?imageView2/format/jpeg"; urls[0] != want {
 		t.Fatalf("first media URL = %q, want %q", urls[0], want)
 	}
+	if got := stringValue(data["封面地址"]); got != urls[0] {
+		t.Fatalf("封面地址 = %q, want %q", got, urls[0])
+	}
 	lives, ok := data["动图地址"].([]any)
 	if !ok || len(lives) != 2 || stringValue(lives[0]) == "" || lives[1] != nil {
 		t.Fatalf("动图地址 = %#v", data["动图地址"])
@@ -69,6 +72,35 @@ func TestVideoURLSelection(t *testing.T) {
 	urls := videoURLs(note, "resolution")
 	if len(urls) != 1 || urls[0] != "https://example.invalid/1080.mp4" {
 		t.Fatalf("videoURLs() = %#v", urls)
+	}
+}
+
+func TestExtractVideoIncludesFirstImageAsCover(t *testing.T) {
+	note := map[string]any{
+		"noteId": "video-cover",
+		"type":   "video",
+		"imageList": []any{
+			map[string]any{
+				"urlDefault": "https://sns-webpic-qc.xhscdn.com/202603010101/0a1b2c3d4e5f/video-cover-token!nd_dft_wlteh_webp_3",
+			},
+		},
+		"video": map[string]any{
+			"consumer": map[string]any{"originVideoKey": "video-cover.mp4"},
+		},
+	}
+
+	data, err := extractWork(note, "https://www.xiaohongshu.com/explore/video-cover", "video-cover")
+	if err != nil {
+		t.Fatalf("extractWork() error = %v", err)
+	}
+	if got := stringValue(data["作品类型"]); got != "视频" {
+		t.Fatalf("作品类型 = %q", got)
+	}
+	if got, want := stringValue(data["封面地址"]), "https://ci.xiaohongshu.com/video-cover-token?imageView2/format/jpeg"; got != want {
+		t.Fatalf("封面地址 = %q, want %q", got, want)
+	}
+	if urls, ok := data["下载地址"].([]string); !ok || len(urls) != 1 || urls[0] != "https://sns-video-bd.xhscdn.com/video-cover.mp4" {
+		t.Fatalf("下载地址 = %#v", data["下载地址"])
 	}
 }
 

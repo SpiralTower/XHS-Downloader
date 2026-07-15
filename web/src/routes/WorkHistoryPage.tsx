@@ -80,7 +80,9 @@ function ResourceTable({ resources }: { resources: ExtractionResource[] }) {
                     {resource.kind === "text"
                       ? "文案"
                       : resource.kind === "image"
-                        ? `图片 ${resource.ordinal}`
+                        ? resource.ordinal === 0
+                          ? "封面"
+                          : `图片 ${resource.ordinal}`
                         : `视频 ${resource.ordinal}`}
                   </span>
                 </Table.Cell>
@@ -225,7 +227,7 @@ export default function WorkHistoryPage() {
         <div>
           <Button
             className="mb-3"
-            onPress={() => navigate("/admin/history")}
+            onPress={() => navigate("/admin/works")}
             size="sm"
             variant="secondary"
           >
@@ -239,13 +241,20 @@ export default function WorkHistoryPage() {
             {history.work.platform_id}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {formatDateTime(history.work.first_seen_at)} ·{" "}
-            {formatDateTime(history.work.last_seen_at)}
+            首次记录 {formatDateTime(history.work.first_seen_at)} · 最近解析{" "}
+            {formatDateTime(
+              history.work.last_parsed_at || history.work.last_seen_at,
+            )}
           </p>
         </div>
-        <Chip color="accent" size="sm" variant="soft">
-          <Chip.Label>{history.versions.length} 版本</Chip.Label>
-        </Chip>
+        <div className="flex flex-wrap gap-2">
+          <Chip color="accent" size="sm" variant="soft">
+            <Chip.Label>{history.work.parse_count} 次解析</Chip.Label>
+          </Chip>
+          <Chip size="sm" variant="tertiary">
+            <Chip.Label>{history.versions.length} 版本</Chip.Label>
+          </Chip>
+        </div>
       </header>
 
       {history.versions.length === 0 || !selectedVersion ? (

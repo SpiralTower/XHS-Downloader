@@ -9,8 +9,10 @@ import type {
   HealthSnapshot,
   HistoryPage,
   MediaItem,
+  PopularWorks,
   WorkData,
   WorkHistory,
+  WorkPage,
   WorkViewModel,
 } from "./types";
 
@@ -114,6 +116,10 @@ export function getAccess(signal?: AbortSignal): Promise<AccessSnapshot> {
   return requestJSON("/api/v1/access", { method: "GET", signal });
 }
 
+export function getPopularWorks(signal?: AbortSignal): Promise<PopularWorks> {
+  return requestJSON("/api/v1/popular-works", { method: "GET", signal });
+}
+
 export function getAdminSession(signal?: AbortSignal): Promise<AdminSession> {
   return requestJSON("/api/admin/v1/auth/session", {
     method: "GET",
@@ -183,6 +189,19 @@ export function getHistory(
   });
 }
 
+export function getWorks(
+  cursor: string | null,
+  limit = 25,
+  signal?: AbortSignal,
+): Promise<WorkPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return requestJSON(`/api/admin/v1/works?${params}`, {
+    method: "GET",
+    signal,
+  });
+}
+
 export function getWorkHistory(
   workID: string | number,
   signal?: AbortSignal,
@@ -244,7 +263,13 @@ function mediaKind(url: string, type: string, isLive: boolean): MediaItem["kind"
 
 function resourceMedia(resource: ExtractionResource): MediaItem | null {
   const url = httpUrl(resource.remote_url);
-  if (!url || resource.kind === "text") return null;
+  if (
+    !url ||
+    resource.kind === "text" ||
+    (resource.kind === "image" && resource.ordinal === 0)
+  ) {
+    return null;
+  }
   return {
     url,
     kind: resource.kind === "image" ? "image" : "video",

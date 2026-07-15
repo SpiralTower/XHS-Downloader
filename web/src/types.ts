@@ -83,6 +83,7 @@ export interface SecretSummary {
 export interface AdminSettings {
   revision: number;
   public: boolean;
+  show_popular: boolean;
   save: SaveSettings;
   refetch: boolean;
   default_cookie: SecretSummary;
@@ -99,6 +100,7 @@ export interface SecretUpdate {
 export interface AdminSettingsUpdate {
   revision: number;
   public?: boolean;
+  show_popular?: boolean;
   save?: Partial<SaveSettings>;
   refetch?: boolean;
   default_cookie?: SecretUpdate;
@@ -127,9 +129,24 @@ export interface HistoryPage {
   next_cursor: string | null;
 }
 
+export interface WorkListItem extends WorkReference {
+  parse_count: number;
+  version_count: number;
+  last_parsed_at?: string;
+  title?: string;
+  thumbnail_url?: string;
+}
+
+export interface WorkPage {
+  items: WorkListItem[];
+  next_cursor: string | null;
+}
+
 export interface StoredWork extends WorkReference {
   first_seen_at: string;
   last_seen_at: string;
+  parse_count: number;
+  last_parsed_at?: string;
 }
 
 export interface StoredVersion extends ExtractionVersion {
@@ -139,6 +156,25 @@ export interface StoredVersion extends ExtractionVersion {
 export interface WorkHistory {
   work: StoredWork;
   versions: StoredVersion[];
+}
+
+export interface PopularWork {
+  platform_id: string;
+  title?: string;
+  work_url: string;
+  parse_count: number;
+}
+
+export interface PopularWorks {
+  enabled: boolean;
+  all_time: PopularWork[];
+  recent_30d: PopularWork[];
+  recent_7d: PopularWork[];
+}
+
+export interface PublicHomeData {
+  access: AccessSnapshot;
+  popular: PopularWorks | null;
 }
 
 export interface WorkData extends Record<string, unknown> {
@@ -159,6 +195,7 @@ export interface WorkData extends Record<string, unknown> {
   作者昵称?: string;
   作者ID?: string;
   作者链接?: string;
+  封面地址?: string;
   下载地址?: string[];
   动图地址?: Array<string | null>;
   下载错误?: string;

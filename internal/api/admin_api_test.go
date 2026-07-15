@@ -106,7 +106,7 @@ func TestAdminSessionSettingsEncryptionAndPublicBoundary(t *testing.T) {
 	if err := json.Unmarshal(settingsRecorder.Body.Bytes(), &defaults); err != nil {
 		t.Fatal(err)
 	}
-	if defaults.Revision != 1 || !defaults.Public || defaults.Save.Text ||
+	if defaults.Revision != 1 || !defaults.Public || defaults.ShowPopular || defaults.Save.Text ||
 		defaults.Save.Images || defaults.Save.Videos || !defaults.Refetch {
 		t.Fatalf("default settings = %#v", defaults)
 	}
@@ -120,6 +120,7 @@ func TestAdminSessionSettingsEncryptionAndPublicBoundary(t *testing.T) {
 		strings.NewReader(`{
 			"revision":1,
 			"public":false,
+			"show_popular":true,
 			"save":{"text":true,"images":true,"videos":false},
 			"refetch":false,
 			"default_cookie":{"action":"replace","value":"web_session=super-secret"},
@@ -139,6 +140,9 @@ func TestAdminSessionSettingsEncryptionAndPublicBoundary(t *testing.T) {
 	}
 	if !strings.Contains(body, `"display":"http://127.0.0.1:8080"`) {
 		t.Fatalf("proxy display was not safely redacted: %s", body)
+	}
+	if !strings.Contains(body, `"show_popular":true`) {
+		t.Fatalf("popular setting was not updated: %s", body)
 	}
 
 	var encryptedCookie, encryptedProxy string

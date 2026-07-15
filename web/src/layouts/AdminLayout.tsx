@@ -3,28 +3,28 @@ import { useState } from "react";
 import { NavLink, Outlet, useLoaderData, useNavigate } from "react-router";
 
 import { logoutAdmin } from "../api";
+import { adminNavigationItems } from "../app/adminNavigation";
 import AppHeader from "../components/AppHeader";
 import { XIcon } from "../icons";
 import type { AdminSession } from "../types";
 
-function AdminNavigation() {
-  const className = ({ isActive }: { isActive: boolean }) =>
-    [
-      "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-      isActive
-        ? "bg-accent-soft text-accent-soft-foreground"
-        : "text-muted hover:bg-surface-secondary hover:text-foreground",
-    ].join(" ");
+const adminNavLinkClassName = ({ isActive }: { isActive: boolean }) =>
+  [
+    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+    isActive
+      ? "bg-accent-soft text-accent-soft-foreground"
+      : "text-muted hover:bg-surface-secondary hover:text-foreground",
+  ].join(" ");
 
+function AdminNavigation({ className }: { className: string }) {
   return (
-    <nav aria-label="管理端导航" className="hidden items-center gap-1 sm:flex">
-      <NavLink className={className} to="/admin/settings">
-        设置
-      </NavLink>
-      <NavLink className={className} to="/admin/history">
-        历史
-      </NavLink>
+    <nav aria-label="管理端导航" className={className}>
+      {adminNavigationItems.map((item) => (
+        <NavLink className={adminNavLinkClassName} key={item.to} to={item.to}>
+          {item.label}
+        </NavLink>
+      ))}
     </nav>
   );
 }
@@ -64,7 +64,9 @@ export default function AdminLayout() {
       <div className="relative flex min-h-screen flex-col">
         <AppHeader
           isLoggingOut={isLoggingOut}
-          navigation={<AdminNavigation />}
+          navigation={
+            <AdminNavigation className="hidden items-center gap-1 sm:flex" />
+          }
           onLogout={() => void logout()}
           username={session.username ?? "管理员"}
         />
@@ -72,37 +74,7 @@ export default function AdminLayout() {
           className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
           id="main-content"
         >
-          <nav
-            aria-label="管理端导航"
-            className="mb-5 flex items-center gap-1 sm:hidden"
-          >
-            <NavLink
-              className={({ isActive }) =>
-                [
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent-soft text-accent-soft-foreground"
-                    : "text-muted hover:bg-surface-secondary hover:text-foreground",
-                ].join(" ")
-              }
-              to="/admin/settings"
-            >
-              设置
-            </NavLink>
-            <NavLink
-              className={({ isActive }) =>
-                [
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent-soft text-accent-soft-foreground"
-                    : "text-muted hover:bg-surface-secondary hover:text-foreground",
-                ].join(" ")
-              }
-              to="/admin/history"
-            >
-              历史
-            </NavLink>
-          </nav>
+          <AdminNavigation className="mb-5 flex items-center gap-1 sm:hidden" />
           {logoutError && (
             <Alert className="mb-5" status="danger">
               <Alert.Indicator>

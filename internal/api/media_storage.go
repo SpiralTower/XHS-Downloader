@@ -193,8 +193,16 @@ func versionMediaTasks(data map[string]any, policy mediaPersistencePolicy) []med
 	if err != nil {
 		return nil
 	}
-	tasks := make([]mediaPersistenceTask, 0, len(urls)+len(lives))
+	tasks := make([]mediaPersistenceTask, 0, len(urls)+len(lives)+1)
 	if stringValue(data["作品类型"]) == "视频" {
+		// Ordinal 0 is reserved for the video cover so ordinary media lists can exclude it.
+		if coverURL := strings.TrimSpace(firstString(data["封面地址"])); coverURL != "" {
+			tasks = append(tasks, mediaPersistenceTask{
+				result:   mediaPersistenceResult{Kind: "image", Ordinal: 0, RemoteURL: coverURL, Status: persistenceStatus(policy.Images)},
+				download: downloadTask{url: coverURL, baseName: "cover_000", extension: "jpeg"},
+				enabled:  policy.Images,
+			})
+		}
 		if len(urls) > 0 && strings.TrimSpace(urls[0]) != "" {
 			tasks = append(tasks, mediaPersistenceTask{
 				result:   mediaPersistenceResult{Kind: "video", Ordinal: 1, RemoteURL: urls[0], Status: persistenceStatus(policy.Videos)},

@@ -5,12 +5,14 @@ import {
   ApiError,
   getAccess,
   getAdminSession,
+  getPopularWorks,
   getWorkHistory,
 } from "../api";
 import AdminLayout from "../layouts/AdminLayout";
 import PublicLayout from "../layouts/PublicLayout";
 import RootLayout from "../layouts/RootLayout";
 import RouteErrorPage from "../routes/RouteErrorPage";
+import type { PublicHomeData } from "../types";
 import { safeNextPath } from "./safeNextPath";
 
 async function publicAccessLoader({ request }: LoaderFunctionArgs) {
@@ -21,7 +23,18 @@ async function publicAccessLoader({ request }: LoaderFunctionArgs) {
       `/admin/login?next=${encodeURIComponent(url.pathname + url.search)}`,
     );
   }
-  return access;
+
+  let popular: PublicHomeData["popular"] = null;
+  try {
+    popular = await getPopularWorks(request.signal);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    popular = null;
+  }
+
+  return { access, popular } satisfies PublicHomeData;
 }
 
 async function loginLoader({ request }: LoaderFunctionArgs) {
@@ -60,6 +73,14 @@ async function workHistoryLoader({ params, request }: LoaderFunctionArgs) {
     }
     throw error;
   }
+}
+
+function legacyWorkHistoryLoader({ params }: LoaderFunctionArgs) {
+  if (!params.workId) {
+    throw new Response("缺少作品 ID", { status: 400 });
+  }
+
+  throw redirect("/admin/works/" + encodeURIComponent(params.workId));
 }
 
 export const router = createBrowserRouter([
@@ -106,6 +127,21 @@ export const router = createBrowserRouter([
               })),
           },
           {
+            path: "works",
+            lazy: () =>
+              import("../routes/AdminWorksPage").then((module) => ({
+                Component: module.default,
+              })),
+          },
+          {
+            path: "works/:workId",
+            loader: workHistoryLoader,
+            lazy: () =>
+              import("../routes/WorkHistoryPage").then((module) => ({
+                Component: module.default,
+              })),
+          },
+          {
             path: "history",
             lazy: () =>
               import("../routes/AdminHistoryPage").then((module) => ({
@@ -114,11 +150,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "history/:workId",
-            loader: workHistoryLoader,
-            lazy: () =>
-              import("../routes/WorkHistoryPage").then((module) => ({
-                Component: module.default,
-              })),
+            loader: legacyWorkHistoryLoader,
           },
         ],
       },

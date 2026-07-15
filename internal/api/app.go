@@ -129,10 +129,13 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/xhs/detail", a.handleDetail)
 	mux.HandleFunc("/api/v1/access", a.handleAccess)
 	mux.HandleFunc("/api/v1/extractions", a.handleExtractionsV1)
+	mux.HandleFunc("/api/v1/popular-works", a.handlePopularWorks)
 	mux.HandleFunc("/api/admin/v1/auth/session", a.handleAdminSession)
 	mux.HandleFunc("/api/admin/v1/settings", a.handleAdminSettings)
 	mux.HandleFunc("/api/admin/v1/history", a.handleAdminHistory)
+	mux.HandleFunc("/api/admin/v1/works", a.handleAdminWorks)
 	mux.HandleFunc("/api/admin/v1/works/", a.handleAdminWork)
+	mux.HandleFunc("/api/admin/v1/resources/", a.handleAdminResourceContent)
 	mux.HandleFunc("/openapi.json", a.handleOpenAPI)
 	mux.HandleFunc("/docs", a.handleDocs)
 	mux.HandleFunc("/redoc", func(writer http.ResponseWriter, request *http.Request) {
