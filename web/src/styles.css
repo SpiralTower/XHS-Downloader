@@ -139,8 +139,9 @@ textarea {
 .search-submit-btn.button {
   gap: 0;
   overflow: hidden;
-  width: 2rem;
-  min-width: 2rem;
+  width: 2.25rem;
+  min-width: 2.25rem;
+  aspect-ratio: 1 / 1;
   padding-inline: 0;
   justify-content: center;
   transition:
@@ -151,6 +152,13 @@ textarea {
     transform 250ms var(--ease-smooth, cubic-bezier(0.32, 0.72, 0, 1)),
     background-color 100ms var(--ease-out, ease-out),
     box-shadow 100ms var(--ease-out, ease-out);
+}
+
+@media (min-width: 768px) {
+  .search-submit-btn.button {
+    width: 2rem;
+    min-width: 2rem;
+  }
 }
 
 .search-submit-btn .search-submit-label {
@@ -166,6 +174,7 @@ textarea {
 @media (hover: hover) {
   .search-submit-btn.button:hover,
   .search-submit-btn.button[data-hovered="true"] {
+    aspect-ratio: auto;
     gap: 0.375rem;
     width: auto;
     min-width: 4.75rem;
@@ -181,6 +190,7 @@ textarea {
 
 .search-submit-btn.button:focus-visible,
 .search-submit-btn.button[data-focus-visible="true"] {
+  aspect-ratio: auto;
   gap: 0.375rem;
   width: auto;
   min-width: 4.75rem;

@@ -13,7 +13,7 @@ import {
 } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useLoaderData } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
 
 import { ApiError, extractDetail } from "../api";
 import ExtractResult from "../features/extraction/ExtractResult";
@@ -60,6 +60,7 @@ function validateWorkUrl(value: string): string | null {
 
 export default function PublicExtractPage() {
   const { access, popular } = useLoaderData() as PublicHomeData;
+  const navigate = useNavigate();
   const [values, setValues] = useState(initialValues);
   const [state, setState] = useState<RequestState>("idle");
   const [response, setResponse] = useState<ExtractionResponse | null>(null);
@@ -97,6 +98,11 @@ export default function PublicExtractPage() {
     const invalidURL = validateWorkUrl(values.url);
     if (invalidURL) {
       setFieldErrors({ url: invalidURL });
+      return;
+    }
+
+    if (!access.can_extract) {
+      navigate(`/admin/login?next=${encodeURIComponent("/")}`);
       return;
     }
 
@@ -176,7 +182,11 @@ export default function PublicExtractPage() {
         </h1>
         {!hasResult && (
           <p className="max-w-md text-sm text-muted sm:text-base">
-            {access.public ? "粘贴链接，立即获取内容与媒体" : "管理员解析"}
+            {access.can_extract
+              ? access.public
+                ? "粘贴链接，立即获取内容与媒体"
+                : "管理员解析"
+              : "当前未开放匿名解析，请先登录管理端"}
           </p>
         )}
       </section>

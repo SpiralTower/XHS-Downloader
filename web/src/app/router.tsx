@@ -17,21 +17,17 @@ import { safeNextPath } from "./safeNextPath";
 
 async function publicAccessLoader({ request }: LoaderFunctionArgs) {
   const access = await getAccess(request.signal);
-  if (!access.can_extract) {
-    const url = new URL(request.url);
-    throw redirect(
-      `/admin/login?next=${encodeURIComponent(url.pathname + url.search)}`,
-    );
-  }
 
   let popular: PublicHomeData["popular"] = null;
-  try {
-    popular = await getPopularWorks(request.signal);
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
+  if (access.can_extract) {
+    try {
+      popular = await getPopularWorks(request.signal);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw error;
+      }
+      popular = null;
     }
-    popular = null;
   }
 
   return { access, popular } satisfies PublicHomeData;

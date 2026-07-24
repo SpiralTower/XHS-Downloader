@@ -54,13 +54,13 @@ function ThemeControl() {
   return (
     <Button
       aria-label={`外观主题：${label}，点击切换为${themeMeta[nextTheme].label}`}
+      isIconOnly
       onPress={() => setTheme(nextTheme)}
       size="sm"
       type="button"
       variant="secondary"
     >
       <Icon className="size-4" />
-      {label}
     </Button>
   );
 }
@@ -95,7 +95,7 @@ function HealthChip() {
     health.state === "checking"
       ? "检查中"
       : health.state === "online"
-        ? `${health.latency}ms`
+        ? `在线 ${health.latency}ms`
         : "离线";
   const color =
     health.state === "online"
@@ -103,21 +103,21 @@ function HealthChip() {
       : health.state === "offline"
         ? "danger"
         : "default";
+  const detail = health.checkedAt
+    ? `上次检查：${health.checkedAt.toLocaleTimeString("zh-CN")}`
+    : "正在执行首次健康检查";
 
   return (
     <Chip
+      aria-label={`服务状态：${label}`}
+      className="size-9 justify-center px-0 md:size-8"
       color={color}
       size="sm"
-      title={
-        health.checkedAt
-          ? `上次检查：${health.checkedAt.toLocaleTimeString("zh-CN")}`
-          : "正在执行首次健康检查"
-      }
+      title={`${label} · ${detail}`}
       variant="soft"
     >
-      <Chip.Label className="flex items-center gap-1.5">
-        <ActivityIcon className="size-3.5" />
-        {label}
+      <Chip.Label className="flex items-center justify-center">
+        <ActivityIcon className="size-4" />
       </Chip.Label>
     </Chip>
   );
