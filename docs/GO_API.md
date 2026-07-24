@@ -1,6 +1,4 @@
-# Go 核心 API、React 用户端与管理端
-
-本仓库的核心 REST API 使用 Go，浏览器端使用 React 19、HeroUI v3、Tailwind CSS v4 和 Vite 8。Go 服务同时提供：
+# Go API、Web 用户端与管理端
 
 - 用户端：`/`
 - 管理端登录：`/admin/login`
@@ -9,16 +7,11 @@
 - 解析历史：`/admin/history`
 - API 文档：`/docs` 与 `/openapi.json`
 
-原 Python 桌面版、TUI、CLI 与 MCP 代码仍保留，不属于 Go 容器镜像。
-
 ## 工具链
 
-- Go 1.24 或更高版本；`go.mod` 固定 Go 1.24 工具链
+- Go 1.24 或更高版本
 - Node.js 22 与 npm 10
-- Python 3.12 或更高版本，仅用于保留的 Python 功能
 - Docker 26 或兼容版本
-
-CNB 云原生开发环境由 [`.ide/Dockerfile`](../.ide/Dockerfile) 提供 Go 1.24、Python 3.12、Node.js 22 与 Docker CLI。
 
 ## 本地开发
 
@@ -279,10 +272,6 @@ docker compose up --build -d
 - `Temp/`
 - 兼容的 `downloaded.json`（如果存在）
 
-## CNB 构建
-
-[`.cnb.yml`](../.cnb.yml) 使用显式的 CNB 数据卷格式，避免 path-only 卷被错误解析：
-
 ~~~yaml
 volumes:
   - xhs-go-mod:/go/pkg/mod:copy-on-write
@@ -299,14 +288,6 @@ volumes:
 5. 在首实例健康时启动同卷第二实例，断言它因卷锁非零退出且日志包含明确冲突信息。
 6. 停止首实例后复用同一卷重启，确认锁已释放且 SQLite 与 `secrets.key` 持久化。
 7. 仅在 `master` push 且全部检查通过后推送提交短 SHA 与 `latest` 标签。
-
-CNB Docker 服务会为当前仓库制品库提供登录状态；镜像地址使用 `$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE`。
-
-校验流水线：
-
-~~~bash
-node /root/.agents/skills/cnb-pipeline/validator/validate.js /workspace/.cnb.yml
-~~~
 
 ## 验证
 

@@ -185,26 +185,3 @@ GET|HEAD         /api/admin/v1/resources/:id/content
 ~~~
 
 管理会话使用同源 `HttpOnly`、`SameSite=Strict` Cookie。设置修改、登录、登出，以及所有携带有效管理员会话的解析请求都会校验请求来源。
-
-## CNB 构建
-
-`.cnb.yml` 使用 CNB 的显式 `group:path:type` COW 卷：
-
-~~~yaml
-volumes:
-  - xhs-go-mod:/go/pkg/mod:copy-on-write
-  - xhs-go-build:/root/.cache/go-build:copy-on-write
-  - xhs-npm:/root/.npm:copy-on-write
-~~~
-
-流水线顺序：
-
-1. Go 测试与 vet。
-2. React 测试和生产构建。
-3. 生产 Dockerfile 构建。
-4. 临时持久卷健康检查。
-5. 首实例健康时启动同卷第二实例，断言它因卷锁明确退出。
-6. 停止首实例后同卷顺序重启，确认锁已释放且 SQLite 与 `secrets.key` 持久化。
-7. 仅在 `master` 且全部检查通过后推送 commit SHA 与 `latest` 镜像。
-
-CNB Docker 服务会为当前仓库制品库提供登录状态，不需要在流水线中重复执行 `docker login`。
