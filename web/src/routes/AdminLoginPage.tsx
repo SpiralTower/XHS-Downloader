@@ -73,6 +73,7 @@ export default function AdminLoginPage() {
           <Card className="glass-panel w-full max-w-sm border border-border">
             <Form
               aria-labelledby="main-heading"
+              className="flex w-full flex-col gap-4"
               onSubmit={submit}
               validationBehavior="native"
               validationErrors={fieldErrors}
@@ -118,7 +119,7 @@ export default function AdminLoginPage() {
                 </TextField>
               </Card.Content>
 
-              <Card.Footer className="flex flex-col gap-2">
+              <Card.Footer className="flex flex-col gap-3 pt-1">
                 <Button
                   fullWidth
                   isDisabled={isSubmitting}
