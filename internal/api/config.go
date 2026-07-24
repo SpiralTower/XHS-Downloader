@@ -24,7 +24,7 @@ const (
 	defaultPublicGlobalRateLimit = 120
 	defaultPublicMaxConcurrency  = 4
 	defaultAdminUsername         = "admin"
-	defaultAdminSessionTTL       = 12 * time.Hour
+	defaultAdminSessionTTL       = 7 * 24 * time.Hour
 )
 
 // Config contains the runtime settings for the core API server.

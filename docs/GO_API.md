@@ -162,7 +162,7 @@ SQLite 记录资源类别、序号、状态、MIME、大小与 SHA-256。管理 
 | `XHS_ADMIN_USERNAME` | `admin` | 管理员用户名 |
 | `XHS_ADMIN_PASSWORD` | 无 | 管理密码；生产启动必须设置 |
 | `XHS_ADMIN_PASSWORD_FILE` | 无 | 从文件读取管理密码，优先于 `XHS_ADMIN_PASSWORD` |
-| `XHS_ADMIN_SESSION_TTL` | `12h` | 管理会话有效期 |
+| `XHS_ADMIN_SESSION_TTL` | `168h` | 管理会话有效期 |
 | `XHS_SESSION_COOKIE_SECURE` | `false` | 是否只通过 HTTPS 发送管理会话 Cookie |
 | `XHS_REQUEST_TIMEOUT` | `15s` | 短链解析与作品页面抓取的单阶段超时 |
 | `XHS_DOWNLOAD_TIMEOUT` | `30m` | 单个媒体任务取得下载槽后的总超时 |
