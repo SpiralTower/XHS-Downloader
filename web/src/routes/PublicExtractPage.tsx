@@ -38,7 +38,7 @@ const initialValues: PublicExtractFormValues = {
 };
 
 const supportedLinkPattern =
-  /(?:https?:\/\/)?(?:www\.)?(?:(?:xiaohongshu|rednote)\.com\/(?:explore\/\S+|discovery\/item\/\S+|user\/profile\/[a-z0-9]+\/\S+)|xhslink\.com\/\S+)/i;
+  /(?:https?:\/\/)?(?:www\.)?(?:(?:xiaohongshu|rednote)\.com\/(?:explore\/\S+|discovery\/item\/\S+|user\/profile\/[a-z0-9]+\/\S+)|xhslink\.(?:com|cn)\/\S+)/i;
 
 function validateWorkUrl(value: string): string | null {
   const candidate = value.match(supportedLinkPattern)?.[0];

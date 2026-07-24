@@ -233,6 +233,7 @@ func TestStrictLinkRedirectPolicy(t *testing.T) {
 	}{
 		{"detail", "https://www.rednote.com/discovery/item/next", false, true},
 		{"short", "https://xhslink.com/next", true, false},
+		{"short cn", "https://xhslink.cn/next", true, false},
 		{"downgrade", "http://www.xiaohongshu.com/explore/next", true, false},
 		{"external", "https://example.com/explore/next", true, false},
 		{"nonstandard port", "https://www.xiaohongshu.com:8443/explore/next", true, false},

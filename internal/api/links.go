@@ -15,7 +15,7 @@ var (
 	ErrUnsupportedLink = errors.New("unsupported Xiaohongshu link")
 
 	detailLinkPattern = regexp.MustCompile(`(?i)(https?://)?(www\.)?(xiaohongshu\.com|rednote\.com)/(explore/[^[:space:]]+|discovery/item/[^[:space:]]+|user/profile/[a-z0-9]+/[^[:space:]]+)`)
-	shortLinkPattern  = regexp.MustCompile(`(?i)(https?://)?(www\.)?xhslink\.com/[^[:space:]]+`)
+	shortLinkPattern  = regexp.MustCompile(`(?i)(https?://)?(www\.)?xhslink\.(?:com|cn)/[^[:space:]]+`)
 )
 
 type resolvedLink struct {
@@ -112,7 +112,7 @@ func isShortURL(value string) bool {
 		return false
 	}
 	host := strings.ToLower(parsed.Hostname())
-	return (host == "xhslink.com" || host == "www.xhslink.com") && parsed.EscapedPath() != "" && parsed.EscapedPath() != "/"
+	return (host == "xhslink.com" || host == "www.xhslink.com" || host == "xhslink.cn" || host == "www.xhslink.cn") && parsed.EscapedPath() != "" && parsed.EscapedPath() != "/"
 }
 
 func isSupportedLinkURL(value *url.URL) bool {

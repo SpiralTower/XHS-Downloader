@@ -92,7 +92,7 @@ Content-Type: application/json
 
 持久缓存 scope 是服务端 HMAC 摘要，覆盖默认/无连接上下文以及解析后 URL 的规范化授权查询（包括 `xsec_token` 等）。不同 token 或连接上下文不会互相命中；缓存表和解析历史不保存这些 Cookie、代理或授权 token 的明文。
 
-支持小红书与 RedNote 的 `explore`、`discovery/item`、`user/profile/.../作品ID` 链接，以及 `xhslink.com` 短链。
+支持小红书与 RedNote 的 `explore`、`discovery/item`、`user/profile/.../作品ID` 链接，以及 `xhslink.com` / `xhslink.cn` 短链。
 
 ## 兼容接口 `/xhs/detail`
 

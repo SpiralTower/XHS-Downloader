@@ -78,6 +78,7 @@
 <li><code>https://www.xiaohongshu.com/discovery/item/NoteID?xsec_token=XXX</code></li>
 <li><code>https://www.xiaohongshu.com/user/profile/AuthorID/NoteID?xsec_token=XXX</code></li>
 <li><code>https://xhslink.com/ShareCode</code></li>
+<li><code>https://xhslink.cn/ShareCode</code></li>
 <br/>
 <p><b>Supports entering multiple notes links at once, separated by spaces; the program will automatically extract valid links without additional processing!</b></p>
 </ul>

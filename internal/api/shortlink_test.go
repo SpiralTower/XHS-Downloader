@@ -149,3 +149,46 @@ func testRedirectResponse(request *http.Request, location string) *http.Response
 		Request:    request,
 	}
 }
+
+func TestCnShortLinkResolutionFollowsRedirectChain(t *testing.T) {
+	cookie := "a=secret"
+	observedURLs := make([]string, 0, 3)
+	client := &http.Client{Transport: securityRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		observedURLs = append(observedURLs, request.URL.String())
+		if request.Header.Get("Cookie") != "" {
+			t.Fatalf("short-link hop leaked Cookie for %s", request.URL)
+		}
+		switch request.URL.String() {
+		case "https://xhslink.cn/fixture":
+			return testRedirectResponse(request, "https://www.xhslink.cn/next"), nil
+		case "https://www.xhslink.cn/next":
+			return testRedirectResponse(request, "https://www.xiaohongshu.com/explore/final-cn-note"), nil
+		case "https://www.xiaohongshu.com/explore/final-cn-note":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("ok")),
+				Request:    request,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected URL %s", request.URL)
+		}
+	})}
+
+	resolved, err := resolveLink(t.Context(), "复制 https://xhslink.cn/fixture", client, requestHeaders(&cookie))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.URL != "https://www.xiaohongshu.com/explore/final-cn-note" || resolved.NoteID != "final-cn-note" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	wantURLs := []string{
+		"https://xhslink.cn/fixture",
+		"https://www.xhslink.cn/next",
+		"https://www.xiaohongshu.com/explore/final-cn-note",
+	}
+	if strings.Join(observedURLs, "\n") != strings.Join(wantURLs, "\n") {
+		t.Fatalf("observed URLs = %#v, want %#v", observedURLs, wantURLs)
+	}
+}

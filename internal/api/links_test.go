@@ -75,3 +75,37 @@ func TestRejectsUnsupportedLink(t *testing.T) {
 		t.Fatal("resolveLink() accepted unsupported host")
 	}
 }
+
+func TestIsShortURLAcceptsComAndCn(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{"https://xhslink.com/abc", true},
+		{"https://www.xhslink.com/abc", true},
+		{"https://xhslink.cn/abc", true},
+		{"https://www.xhslink.cn/abc", true},
+		{"https://xhslink.com/", false},
+		{"http://xhslink.cn/abc", false},
+		{"https://xhslink.com.evil.example/abc", false},
+		{"https://xhslink.cn:8443/abc", false},
+	}
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			if got := isShortURL(test.value); got != test.want {
+				t.Fatalf("isShortURL(%q) = %t, want %t", test.value, got, test.want)
+			}
+		})
+	}
+}
+
+func TestFirstSupportedCandidateRecognizesCnShortLinks(t *testing.T) {
+	candidate, short := firstSupportedCandidate("复制打开 https://xhslink.cn/shareCode 看看")
+	if !short || candidate != "https://xhslink.cn/shareCode" {
+		t.Fatalf("firstSupportedCandidate() = %q short=%t", candidate, short)
+	}
+	candidate, short = firstSupportedCandidate("www.xhslink.cn/shareCode")
+	if !short || candidate != "www.xhslink.cn/shareCode" {
+		t.Fatalf("firstSupportedCandidate(www) = %q short=%t", candidate, short)
+	}
+}
