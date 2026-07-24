@@ -1,21 +1,23 @@
-name: 删除 GHCR Untagged 镜像
+name: Delete untagged GHCR images
+
 on:
   schedule:
     - cron: "0 0 15 * *"
-  release:
-    types: [ published ]
   workflow_dispatch:
+
+permissions:
+  packages: write
 
 jobs:
   delete-untagged:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete all containers from package without tags
+      - name: Delete untagged package versions
         uses: Chizkiyahu/delete-untagged-ghcr-action@v6
         with:
           token: ${{ secrets.PAT_TOKEN }}
           repository_owner: ${{ github.repository_owner }}
           repository: ${{ github.repository }}
-          package_name: "xhs-downloader"
+          package_name: xhs-downloader
           untagged_only: true
           owner_type: user
