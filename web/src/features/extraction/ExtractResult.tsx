@@ -1,15 +1,13 @@
-import { Alert, Card, Chip, Link } from "@heroui/react";
+import { Card, Chip, Link, Tag, TagGroup } from "@heroui/react";
 import { useMemo } from "react";
 
 import { formatDateTime, toWorkView } from "../../api";
 import {
   ArrowUpRightIcon,
-  CheckIcon,
   ClockIcon,
   DownloadIcon,
   ImageIcon,
   RefreshIcon,
-  XIcon,
 } from "../../icons";
 import type { ExtractionResponse } from "../../types";
 import MediaPreview from "./MediaPreview";
@@ -37,10 +35,6 @@ export default function ExtractResult({
     () => toWorkView(response.data, response.version.resources),
     [response],
   );
-  const failedResources = response.version.resources.filter(
-    (resource) => resource.save_status === "failed",
-  );
-  const warning = Boolean(work.downloadError) || failedResources.length > 0;
 
   return (
     <section
@@ -48,30 +42,6 @@ export default function ExtractResult({
       className="grid min-w-0 gap-4"
       tabIndex={-1}
     >
-      <Alert status={warning ? "warning" : "success"}>
-        <Alert.Indicator>
-          {warning ? (
-            <XIcon className="size-5" />
-          ) : (
-            <CheckIcon className="size-5" />
-          )}
-        </Alert.Indicator>
-        <Alert.Content>
-          <Alert.Title>
-            {warning ? "部分资源保存失败" : "解析完成"}
-          </Alert.Title>
-          {(work.downloadError ||
-            failedResources[0]?.save_error ||
-            (response.message && response.message !== "ok")) && (
-            <Alert.Description>
-              {work.downloadError ||
-                failedResources[0]?.save_error ||
-                response.message}
-            </Alert.Description>
-          )}
-        </Alert.Content>
-      </Alert>
-
       <Card className="glass-panel min-w-0 border border-border">
         <Card.Header className="min-w-0 items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -144,18 +114,19 @@ export default function ExtractResult({
           </div>
 
           {work.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {work.tags.map((tag, index) => (
-                <Chip
-                  className="max-w-full"
-                  key={`${tag}-${index}`}
-                  size="sm"
-                  variant="tertiary"
-                >
-                  <Chip.Label className="truncate">#{tag}</Chip.Label>
-                </Chip>
-              ))}
-            </div>
+            <TagGroup aria-label="标签" size="sm">
+              <TagGroup.List>
+                {work.tags.map((tag, index) => (
+                  <Tag
+                    className="max-w-full truncate"
+                    id={`${tag}-${index}`}
+                    key={`${tag}-${index}`}
+                  >
+                    #{tag}
+                  </Tag>
+                ))}
+              </TagGroup.List>
+            </TagGroup>
           )}
 
           {work.media.length > 0 && (

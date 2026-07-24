@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Card,
   FieldError,
@@ -8,6 +7,7 @@ import {
   Label,
   Spinner,
   TextField,
+  toast,
 } from "@heroui/react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -16,7 +16,6 @@ import { useNavigate, useSearchParams } from "react-router";
 import { ApiError, loginAdmin } from "../api";
 import { safeNextPath } from "../app/safeNextPath";
 import AppHeader from "../components/AppHeader";
-import { ShieldIcon, XIcon } from "../icons";
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
@@ -24,7 +23,6 @@ export default function AdminLoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -33,7 +31,6 @@ export default function AdminLoginPage() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
     setFieldErrors({});
     setIsSubmitting(true);
 
@@ -46,7 +43,7 @@ export default function AdminLoginPage() {
     } catch (cause) {
       if (cause instanceof ApiError) {
         setFieldErrors(cause.fieldErrors);
-        setError(
+        toast.danger(
           cause.status === 401
             ? "用户名或密码不正确"
             : cause.status === 503
@@ -54,7 +51,9 @@ export default function AdminLoginPage() {
               : cause.message,
         );
       } else {
-        setError(cause instanceof Error ? cause.message : "登录失败，请稍后重试");
+        toast.danger(
+          cause instanceof Error ? cause.message : "登录失败，请稍后重试",
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -70,56 +69,60 @@ export default function AdminLoginPage() {
           className="mx-auto grid w-full max-w-6xl flex-1 place-items-center px-4 py-10 sm:px-6 lg:px-8"
           id="main-content"
         >
-          <Card className="glass-panel w-full max-w-sm border border-border">
+          <Card className="glass-panel w-full max-w-md border border-border">
+            <Card.Header>
+              <Card.Title id="main-heading" tabIndex={-1}>
+                登录
+              </Card.Title>
+              <Card.Description>访问控制台</Card.Description>
+            </Card.Header>
             <Form
               aria-labelledby="main-heading"
-              className="flex w-full flex-col gap-4"
+              className="flex w-full flex-col"
               onSubmit={submit}
               validationBehavior="native"
               validationErrors={fieldErrors}
             >
-              <Card.Content className="grid gap-4">
-                {error && (
-                  <Alert status="danger">
-                    <Alert.Indicator>
-                      <XIcon className="size-5" />
-                    </Alert.Indicator>
-                    <Alert.Content>
-                      <Alert.Description>{error}</Alert.Description>
-                    </Alert.Content>
-                  </Alert>
-                )}
+              <Card.Content>
+                <div className="flex flex-col gap-4">
+                  <TextField
+                    fullWidth
+                    isRequired
+                    name="username"
+                    onChange={setUsername}
+                    value={username}
+                  >
+                    <Label>用户名</Label>
+                    <Input
+                      autoCapitalize="none"
+                      autoComplete="username"
+                      placeholder="admin"
+                      spellCheck={false}
+                      variant="secondary"
+                    />
+                    <FieldError />
+                  </TextField>
 
-                <TextField
-                  fullWidth
-                  isRequired
-                  name="username"
-                  onChange={setUsername}
-                  value={username}
-                >
-                  <Label>用户名</Label>
-                  <Input
-                    autoCapitalize="none"
-                    autoComplete="username"
-                    spellCheck={false}
-                  />
-                  <FieldError />
-                </TextField>
-
-                <TextField
-                  fullWidth
-                  isRequired
-                  name="password"
-                  onChange={setPassword}
-                  value={password}
-                >
-                  <Label>密码</Label>
-                  <Input autoComplete="current-password" type="password" />
-                  <FieldError />
-                </TextField>
+                  <TextField
+                    fullWidth
+                    isRequired
+                    name="password"
+                    onChange={setPassword}
+                    type="password"
+                    value={password}
+                  >
+                    <Label>密码</Label>
+                    <Input
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      type="password"
+                      variant="secondary"
+                    />
+                    <FieldError />
+                  </TextField>
+                </div>
               </Card.Content>
-
-              <Card.Footer className="flex flex-col gap-3 pt-1">
+              <Card.Footer className="flex flex-col gap-3 pt-4">
                 <Button
                   fullWidth
                   isDisabled={isSubmitting}

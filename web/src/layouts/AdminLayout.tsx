@@ -1,12 +1,11 @@
 import { Alert, Button } from "@heroui/react";
 import { useState } from "react";
-import { NavLink, Outlet, useLoaderData, useNavigate } from "react-router";
+import { NavLink, Outlet, useNavigate } from "react-router";
 
 import { logoutAdmin } from "../api";
 import { adminNavigationItems } from "../app/adminNavigation";
 import AppHeader from "../components/AppHeader";
 import { XIcon } from "../icons";
-import type { AdminSession } from "../types";
 
 const adminNavLinkClassName = ({ isActive }: { isActive: boolean }) =>
   [
@@ -30,7 +29,6 @@ function AdminNavigation({ className }: { className: string }) {
 }
 
 export default function AdminLayout() {
-  const session = useLoaderData() as AdminSession;
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
@@ -68,7 +66,6 @@ export default function AdminLayout() {
             <AdminNavigation className="hidden items-center gap-1 sm:flex" />
           }
           onLogout={() => void logout()}
-          username={session.username ?? "管理员"}
         />
         <main
           className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"

@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Description,
   Disclosure,
@@ -10,18 +9,17 @@ import {
   Label,
   Spinner,
   TextField,
+  toast,
 } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 
-import { ApiError, extractDetail } from "../api";
+import { ApiError, extractDetail, toWorkView } from "../api";
 import ExtractResult from "../features/extraction/ExtractResult";
 import PopularWorksSection from "../features/extraction/PopularWorksSection";
 import {
-  CheckIcon,
   SearchIcon,
-  ShieldIcon,
   XIcon,
 } from "../icons";
 import type {
@@ -64,7 +62,6 @@ export default function PublicExtractPage() {
   const [values, setValues] = useState(initialValues);
   const [state, setState] = useState<RequestState>("idle");
   const [response, setResponse] = useState<ExtractionResponse | null>(null);
-  const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const controllerRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -92,7 +89,6 @@ export default function PublicExtractPage() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
     setFieldErrors({});
 
     const invalidURL = validateWorkUrl(values.url);
@@ -128,17 +124,38 @@ export default function PublicExtractPage() {
         controller.signal,
       );
       setResponse(result);
-      setState(
-        result.version.resources.some(
-          (resource) => resource.save_status === "failed",
-        )
-          ? "warning"
-          : "success",
+      const work = toWorkView(result.data, result.version.resources);
+      const failedResource = result.version.resources.find(
+        (resource) => resource.save_status === "failed",
       );
+      const isWarning =
+        Boolean(work.downloadError) || Boolean(failedResource);
+      if (isWarning) {
+        toast.warning("部分资源保存失败", {
+          description:
+            work.downloadError ||
+            failedResource?.save_error ||
+            (result.message && result.message !== "ok"
+              ? result.message
+              : undefined),
+        });
+        setState("warning");
+      } else {
+        toast.success("解析完成", {
+          description:
+            result.message && result.message !== "ok"
+              ? result.message
+              : undefined,
+        });
+        setState("success");
+      }
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       if (cause instanceof ApiError) setFieldErrors(cause.fieldErrors);
-      setError(cause instanceof Error ? cause.message : "请求失败，请稍后重试");
+      toast.danger("解析失败", {
+        description:
+          cause instanceof Error ? cause.message : "请求失败，请稍后重试",
+      });
       setState("error");
     }
   };
@@ -148,7 +165,6 @@ export default function PublicExtractPage() {
     controllerRef.current = null;
     setValues(initialValues);
     setResponse(null);
-    setError("");
     setFieldErrors({});
     setState("idle");
   };
@@ -229,13 +245,15 @@ export default function PublicExtractPage() {
             <InputGroup.Suffix className="flex items-center gap-1 pe-1.5 sm:gap-1.5 sm:pe-2">
               {hasResult && (
                 <Button
+                  aria-label="重置"
                   className="hidden sm:inline-flex"
+                  isIconOnly
                   onPress={reset}
                   size="sm"
                   type="button"
                   variant="ghost"
                 >
-                  重置
+                  <XIcon className="size-4" />
                 </Button>
               )}
               <Button
@@ -271,7 +289,6 @@ export default function PublicExtractPage() {
                   type="button"
                   variant="ghost"
                 >
-                  <ShieldIcon className="size-3.5" />
                   高级选项
                   <Disclosure.Indicator className="size-3.5" />
                 </Button>
@@ -338,27 +355,8 @@ export default function PublicExtractPage() {
           </div>
         )}
 
-        {state === "error" && (
-          <Alert status="danger">
-            <Alert.Indicator>
-              <XIcon className="size-5" />
-            </Alert.Indicator>
-            <Alert.Content>
-              <Alert.Title>解析失败</Alert.Title>
-              <Alert.Description>{error}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        )}
-
         {(state === "success" || state === "warning") && response && (
           <ExtractResult response={response} />
-        )}
-
-        {state === "success" && (
-          <p className="sr-only">
-            <CheckIcon className="size-4" />
-            作品解析完成
-          </p>
         )}
       </div>
     </div>

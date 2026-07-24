@@ -8,10 +8,8 @@ import {
   ActivityIcon,
   MonitorIcon,
   MoonIcon,
-  ShieldIcon,
   SparklesIcon,
   SunIcon,
-  UserIcon,
 } from "../icons";
 import {
   applyTheme,
@@ -125,12 +123,10 @@ function HealthChip() {
 
 export default function AppHeader({
   navigation,
-  username,
   isLoggingOut = false,
   onLogout,
 }: {
   navigation?: ReactNode;
-  username?: string;
   isLoggingOut?: boolean;
   onLogout?: () => void;
 }) {
@@ -153,28 +149,20 @@ export default function AppHeader({
           {navigation}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex h-9 shrink-0 items-center gap-2 md:h-8">
           <div className="hidden sm:block">
             <HealthChip />
           </div>
-          {username && (
-            <Chip size="sm" variant="soft">
-              <Chip.Label className="flex items-center gap-1.5">
-                <UserIcon className="size-3.5" />
-                {username}
-              </Chip.Label>
-            </Chip>
-          )}
           <ThemeControl />
           {onLogout && (
             <Button
+              className="h-9 px-3 md:h-8"
               isDisabled={isLoggingOut}
               onPress={onLogout}
               size="sm"
               type="button"
               variant="secondary"
             >
-              <ShieldIcon className="size-4" />
               {isLoggingOut ? "退出中" : "退出"}
             </Button>
           )}
